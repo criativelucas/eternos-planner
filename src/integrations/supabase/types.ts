@@ -14,6 +14,62 @@ export type Database = {
   }
   public: {
     Tables: {
+      couple_invites: {
+        Row: {
+          accepted: boolean
+          config_id: string
+          created_at: string
+          id: string
+          invite_email: string
+          invited_by: string
+        }
+        Insert: {
+          accepted?: boolean
+          config_id: string
+          created_at?: string
+          id?: string
+          invite_email: string
+          invited_by: string
+        }
+        Update: {
+          accepted?: boolean
+          config_id?: string
+          created_at?: string
+          id?: string
+          invite_email?: string
+          invited_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "couple_invites_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "wedding_config"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       wedding_config: {
         Row: {
           created_at: string
@@ -22,7 +78,9 @@ export type Database = {
           nome_noiva: string
           nome_noivo: string
           orcamento_total: number
+          partner_id: string | null
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -31,7 +89,9 @@ export type Database = {
           nome_noiva?: string
           nome_noivo?: string
           orcamento_total?: number
+          partner_id?: string | null
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -40,13 +100,16 @@ export type Database = {
           nome_noiva?: string
           nome_noivo?: string
           orcamento_total?: number
+          partner_id?: string | null
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
       wedding_items: {
         Row: {
           categoria: string
+          config_id: string | null
           created_at: string
           fornecedor: string | null
           id: string
@@ -62,6 +125,7 @@ export type Database = {
         }
         Insert: {
           categoria?: string
+          config_id?: string | null
           created_at?: string
           fornecedor?: string | null
           id?: string
@@ -77,6 +141,7 @@ export type Database = {
         }
         Update: {
           categoria?: string
+          config_id?: string | null
           created_at?: string
           fornecedor?: string | null
           id?: string
@@ -90,14 +155,27 @@ export type Database = {
           valor_pago?: number
           valor_total?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "wedding_items_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "wedding_config"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      accept_couple_invite: { Args: { _user_id: string }; Returns: undefined }
+      get_user_config_id: { Args: { _user_id: string }; Returns: string }
+      has_wedding_access: {
+        Args: { _config_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
