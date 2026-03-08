@@ -6,7 +6,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { WeddingProvider } from "@/contexts/WeddingContext";
-import { WeddingProvider } from "@/contexts/WeddingContext";
 import Layout from "@/components/Layout";
 import Index from "./pages/Index";
 import Items from "./pages/Items";
