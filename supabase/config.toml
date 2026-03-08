@@ -1,1 +1,4 @@
 project_id = "kzpqtrcfjurtwddwolab"
+
+[functions.parse-wedding-input]
+verify_jwt = false
