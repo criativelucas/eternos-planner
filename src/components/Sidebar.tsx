@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { LayoutDashboard, List, DollarSign, Clock, Award, Settings } from "lucide-react";
+import ThemeToggle from "./ThemeToggle";
 
 const links = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -12,9 +13,12 @@ const links = [
 
 const Sidebar = () => (
   <aside className="hidden md:flex flex-col w-64 min-h-screen bg-sidebar border-r border-sidebar-border p-6">
-    <div className="mb-10">
-      <h1 className="font-heading text-3xl font-semibold text-gradient-rose">Eternos</h1>
-      <p className="text-xs text-muted-foreground mt-1 font-body">Planejamento de Casamento</p>
+    <div className="mb-10 flex items-center justify-between">
+      <div>
+        <h1 className="font-heading text-3xl font-semibold text-gradient-rose">Eternos</h1>
+        <p className="text-xs text-muted-foreground mt-1 font-body">Planejamento de Casamento</p>
+      </div>
+      <ThemeToggle />
     </div>
     <nav className="flex flex-col gap-1 flex-1">
       {links.map(({ to, icon: Icon, label }) => (

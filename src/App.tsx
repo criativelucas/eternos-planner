@@ -54,39 +54,41 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <AuthProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            {/* Public auth routes */}
-            <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-            <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
+    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+      <TooltipProvider>
+        <AuthProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              {/* Public auth routes */}
+              <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+              <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
 
-            {/* Protected app routes */}
-            <Route element={
-              <ProtectedRoute>
-                <WeddingProvider>
-                  <Layout />
-                </WeddingProvider>
-              </ProtectedRoute>
-            }>
-              <Route path="/" element={<Index />} />
-              <Route path="/itens" element={<Items />} />
-              <Route path="/financas" element={<Finances />} />
-              <Route path="/timeline" element={<Timeline />} />
-              <Route path="/conquistas" element={<Achievements />} />
-              <Route path="/config" element={<ConfigPage />} />
-            </Route>
+              {/* Protected app routes */}
+              <Route element={
+                <ProtectedRoute>
+                  <WeddingProvider>
+                    <Layout />
+                  </WeddingProvider>
+                </ProtectedRoute>
+              }>
+                <Route path="/" element={<Index />} />
+                <Route path="/itens" element={<Items />} />
+                <Route path="/financas" element={<Finances />} />
+                <Route path="/timeline" element={<Timeline />} />
+                <Route path="/conquistas" element={<Achievements />} />
+                <Route path="/config" element={<ConfigPage />} />
+              </Route>
 
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
-    </TooltipProvider>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </AuthProvider>
+      </TooltipProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 
