@@ -4,6 +4,7 @@ import { Sparkles, X, Check, Edit3, Loader2 } from "lucide-react";
 import { useWedding } from "@/contexts/WeddingContext";
 import { WeddingItem, CATEGORIA_ICONS, STATUS_LABELS } from "@/types/wedding";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const PLACEHOLDERS = [
   'Contratei o fotógrafo por R$4.500, dei entrada de R$1.500...',
@@ -12,193 +13,6 @@ const PLACEHOLDERS = [
   'Reservei o DJ por R$2.000, 4x de R$500',
   'Comprei os convites por R$800, já paguei tudo',
 ];
-
-function parseBRLValue(raw: string): number {
-  // Handle Brazilian format: "4.500" = 4500, "4.500,00" = 4500, "800" = 800, "3.200" = 3200
-  let cleaned = raw.trim();
-  // If has both dot and comma, dot is thousands separator
-  if (cleaned.includes(".") && cleaned.includes(",")) {
-    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
-  } else if (cleaned.includes(",")) {
-    // Only comma = decimal separator
-    cleaned = cleaned.replace(",", ".");
-  } else if (cleaned.includes(".")) {
-    // Only dot: if 3 digits after dot, it's thousands separator
-    const parts = cleaned.split(".");
-    if (parts[1]?.length === 3) {
-      cleaned = cleaned.replace(".", "");
-    }
-  }
-  return parseFloat(cleaned) || 0;
-}
-
-function mockParseInput(input: string): Partial<WeddingItem> {
-  const lower = input.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const original = input.toLowerCase();
-
-  console.log("[AI Parser] Input:", input);
-
-  // Extract all monetary values - handle R$4.500 / R$ 800 / 4500 reais / 800,00
-  const moneyRegex = /r\$\s?([\d.,]+)/gi;
-  const values: number[] = [];
-  let m;
-  while ((m = moneyRegex.exec(input)) !== null) {
-    values.push(parseBRLValue(m[1]));
-  }
-
-  // If no R$ found, try to find standalone large numbers (likely prices)
-  if (values.length === 0) {
-    const numRegex = /\b(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)\b/g;
-    let nm;
-    while ((nm = numRegex.exec(input)) !== null) {
-      const val = parseBRLValue(nm[1]);
-      if (val >= 50) values.push(val); // Only consider values >= 50 as prices
-    }
-  }
-
-  console.log("[AI Parser] Values found:", values);
-
-  // Find installment patterns: "3x de R$600", "4x de R$500", "faltam 3x"
-  const parcelaValorMatch = original.match(/(\d+)\s*(?:x|parcelas?|vezes)\s*(?:de\s*)?r?\$?\s?([\d.,]+)/i);
-  const parcelasOnlyMatch = original.match(/(\d+)\s*(?:x|parcelas?|vezes)/);
-
-  // Category detection - search in normalized (no accents) text
-  const categoriaMap: [string[], WeddingItem["categoria"]][] = [
-    [["buffet", "gastronomia", "comida", "jantar", "almoco"], "Buffet"],
-    [["fotografo", "fotografia", "foto", "video", "filmagem"], "Foto/Vídeo"],
-    [["vestido", "traje", "roupa", "terno"], "Vestuário"],
-    [["decoracao", "decor", "arranjo"], "Decoração"],
-    [["dj", "musica", "banda", "som", "sonorizacao"], "Música"],
-    [["convite", "papelaria", "save the date"], "Convites"],
-    [["lua de mel", "viagem", "honeymoon"], "Lua de Mel"],
-    [["alianca", "anel", "joias", "joia"], "Alianças"],
-    [["bolo", "doce", "doceria", "confeitaria"], "Bolo"],
-    [["flor", "flores", "florista", "buque"], "Flores"],
-    [["transporte", "carro", "limousine", "limusine"], "Transporte"],
-    [["beleza", "make", "maquiagem", "cabelo", "penteado"], "Beleza"],
-    [["venue", "espaco", "salao", "igreja", "cerimonia", "local", "chacara", "sitio", "fazenda"], "Venue"],
-  ];
-
-  let categoria: WeddingItem["categoria"] = "Outros";
-  for (const [keywords, cat] of categoriaMap) {
-    if (keywords.some(k => lower.includes(k))) {
-      categoria = cat;
-      break;
-    }
-  }
-
-  console.log("[AI Parser] Categoria:", categoria);
-
-  // Detect installments
-  let numParcelas = 0;
-  let valorParcela = 0;
-
-  if (parcelaValorMatch) {
-    numParcelas = parseInt(parcelaValorMatch[1]);
-    valorParcela = parseBRLValue(parcelaValorMatch[2]);
-  } else if (parcelasOnlyMatch) {
-    numParcelas = parseInt(parcelasOnlyMatch[1]);
-  }
-
-  // Determine valorTotal and valorPago from context
-  let valorTotal = 0;
-  let valorPago = 0;
-
-  const hasPaguei = /paguei|pago|entrada|dei|pagou|quitei|depositei/.test(original);
-  const hasFaltam = /faltam?|restam?|restante|falta/.test(original);
-  const hasCusta = /custa|custou|valor|preco|preço|por|total|cobra|cobrou/.test(original);
-  const hasTudo = /tudo|total|quitei|completo|inteiro|a vista|à vista/.test(original);
-  const hasContratei = /contratei|reservei|fechei|comprei|acertei|combinei/.test(original);
-
-  if (values.length >= 2 && hasFaltam && numParcelas > 0) {
-    // "Paguei R$800, faltam 3x de R$600"
-    valorPago = values[0];
-    valorParcela = valorParcela || values[1];
-    valorTotal = valorPago + (numParcelas * valorParcela);
-  } else if (values.length >= 2 && (hasPaguei || hasContratei)) {
-    // "Contratei por R$4.500, dei entrada de R$1.500"
-    if (values[0] > values[1]) {
-      valorTotal = values[0];
-      valorPago = values[1];
-    } else {
-      valorPago = values[0];
-      valorTotal = values[1];
-    }
-  } else if (values.length >= 2) {
-    // Two values, first is likely total
-    valorTotal = Math.max(...values);
-    valorPago = Math.min(...values);
-  } else if (values.length === 1 && hasPaguei && hasTudo) {
-    // "Comprei os convites por R$800, já paguei tudo"
-    valorTotal = values[0];
-    valorPago = values[0];
-  } else if (values.length === 1 && hasPaguei && !hasCusta && !hasContratei) {
-    // "Paguei a 2ª parcela do buffet de R$800"
-    valorPago = values[0];
-    valorTotal = values[0];
-  } else if (values.length === 1 && numParcelas > 0 && valorParcela > 0) {
-    valorTotal = numParcelas * valorParcela;
-  } else if (values.length === 1) {
-    valorTotal = values[0];
-    if (hasPaguei) valorPago = values[0];
-  } else if (numParcelas > 0 && valorParcela > 0) {
-    valorTotal = numParcelas * valorParcela;
-  }
-
-  // Build parcelas
-  const parcelas: WeddingItem["parcelas"] = [];
-  if (numParcelas > 0) {
-    const vp = valorParcela || (valorTotal > 0 ? valorTotal / numParcelas : 0);
-    for (let i = 0; i < numParcelas; i++) {
-      const d = new Date();
-      d.setMonth(d.getMonth() + i + 1);
-      parcelas.push({
-        numero: i + 1,
-        valor: vp,
-        dataVencimento: d.toISOString().split("T")[0],
-        pago: false,
-      });
-    }
-  }
-
-  // Extract name from sentence
-  let nome = "";
-  const nomePatterns = [
-    /(?:contratei|reservei|fechei|comprei|paguei|acertei|combinei)\s+(?:o|a|os|as|um|uma)?\s*(.+?)(?:\s+(?:por|de|no valor|,|$))/i,
-    /(?:o|a)\s+(.+?)(?:\s+(?:custa|custou|ficou|fica|cobra|por)\s)/i,
-    /^(.+?)(?:\s+(?:custa|custou|ficou|por|de|,)\s)/i,
-  ];
-  for (const pattern of nomePatterns) {
-    const match = input.match(pattern);
-    if (match?.[1]) {
-      const candidate = match[1].trim().replace(/^(o|a|os|as|do|da|dos|das)\s+/i, "");
-      if (candidate.length >= 2 && candidate.length < 50) {
-        nome = candidate;
-        break;
-      }
-    }
-  }
-  if (!nome || nome.length < 2) nome = categoria;
-  nome = nome.charAt(0).toUpperCase() + nome.slice(1);
-
-  const status = valorPago >= valorTotal && valorTotal > 0 ? "concluido" as const
-    : valorPago > 0 ? "em_andamento" as const
-    : "pendente" as const;
-
-  const result = {
-    nome,
-    categoria,
-    valorTotal,
-    valorPago,
-    parcelas,
-    status,
-    prioridade: "media" as const,
-    notas: input,
-  };
-
-  console.log("[AI Parser] Result:", result);
-  return result;
-}
 
 const AICommandBar = () => {
   const [open, setOpen] = useState(false);
@@ -226,9 +40,42 @@ const AICommandBar = () => {
   const handleSubmit = async () => {
     if (!input.trim()) return;
     setLoading(true);
-    await new Promise(r => setTimeout(r, 800));
-    const parsed = mockParseInput(input);
-    setPreview(parsed);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("parse-wedding-input", {
+        body: { message: input.trim() },
+      });
+
+      if (error) throw error;
+
+      if (data?.error) {
+        toast({ title: "Erro da IA", description: data.error, variant: "destructive" });
+        setLoading(false);
+        return;
+      }
+
+      const item = data?.item || data;
+      setPreview({
+        nome: item.nome || "Novo Item",
+        categoria: item.categoria || "Outros",
+        fornecedor: item.fornecedor || null,
+        valorTotal: item.valorTotal || 0,
+        valorPago: item.valorPago || 0,
+        parcelas: item.parcelas || [],
+        prazo: item.prazo || null,
+        status: item.status || "pendente",
+        prioridade: item.prioridade || "media",
+        notas: item.notas || input,
+      });
+    } catch (e: any) {
+      console.error("AI parse error:", e);
+      toast({
+        title: "Erro ao interpretar",
+        description: e.message || "Tente novamente",
+        variant: "destructive",
+      });
+    }
+
     setLoading(false);
   };
 
@@ -339,6 +186,11 @@ const AICommandBar = () => {
                       <div><span className="text-muted-foreground">Status:</span> <span className="text-foreground">{STATUS_LABELS[preview.status || "pendente"]}</span></div>
                       <div><span className="text-muted-foreground">Parcelas:</span> <span className="text-foreground">{preview.parcelas?.length || 0}</span></div>
                     </div>
+                    {preview.fornecedor && (
+                      <div className="text-sm font-body">
+                        <span className="text-muted-foreground">Fornecedor:</span> <span className="text-foreground">{preview.fornecedor}</span>
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-3">
                     <button
