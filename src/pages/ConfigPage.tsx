@@ -1,16 +1,51 @@
 import { useState } from "react";
 import { useWedding } from "@/contexts/WeddingContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Download } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Save, Download, UserPlus, LogOut, Mail, Check, X } from "lucide-react";
 
 const ConfigPage = () => {
-  const { config, updateConfig, items } = useWedding();
+  const { config, updateConfig, items, configId } = useWedding();
+  const { user, signOut } = useAuth();
   const { toast } = useToast();
   const [form, setForm] = useState(config);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const [invites, setInvites] = useState<{ id: string; invite_email: string; accepted: boolean }[]>([]);
+  const [loadedInvites, setLoadedInvites] = useState(false);
+
+  // Load invites on first render
+  if (!loadedInvites && configId) {
+    supabase.from("couple_invites").select("id, invite_email, accepted").eq("config_id", configId).then(({ data }) => {
+      if (data) setInvites(data);
+      setLoadedInvites(true);
+    });
+  }
 
   const handleSave = () => {
     updateConfig(form);
     toast({ title: "Configurações salvas! ✨" });
+  };
+
+  const handleInvite = async () => {
+    if (!inviteEmail || !configId || !user) return;
+    setInviting(true);
+
+    const { error } = await supabase.from("couple_invites").insert({
+      config_id: configId,
+      invite_email: inviteEmail,
+      invited_by: user.id,
+    });
+
+    if (error) {
+      toast({ title: "Erro ao convidar", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Convite enviado! 💍", description: `${inviteEmail} pode criar uma conta para acessar o planejamento.` });
+      setInvites(prev => [...prev, { id: crypto.randomUUID(), invite_email: inviteEmail, accepted: false }]);
+      setInviteEmail("");
+    }
+    setInviting(false);
   };
 
   const handleExport = () => {
@@ -34,6 +69,64 @@ const ConfigPage = () => {
     <div className="space-y-8 animate-fade-in max-w-lg">
       <h1 className="font-heading text-3xl text-foreground">Configurações</h1>
 
+      {/* Account info */}
+      <div className="glass-card p-6 space-y-3">
+        <h2 className="font-heading text-lg text-foreground">Sua Conta</h2>
+        <p className="text-sm text-muted-foreground font-body">{user?.email}</p>
+        <button
+          onClick={signOut}
+          className="flex items-center gap-2 text-sm text-destructive hover:underline font-body"
+        >
+          <LogOut size={14} /> Sair da conta
+        </button>
+      </div>
+
+      {/* Invite partner */}
+      <div className="glass-card p-6 space-y-4">
+        <h2 className="font-heading text-lg text-foreground flex items-center gap-2">
+          <UserPlus size={18} className="text-primary" /> Conta Casal
+        </h2>
+        <p className="text-sm text-muted-foreground font-body">
+          Convide seu parceiro(a) para editar o planejamento juntos.
+        </p>
+
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="email"
+              value={inviteEmail}
+              onChange={e => setInviteEmail(e.target.value)}
+              placeholder="email@parceiro.com"
+              className="w-full bg-secondary border border-border rounded-lg pl-10 pr-4 py-2.5 text-sm font-body text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+          <button
+            onClick={handleInvite}
+            disabled={inviting || !inviteEmail}
+            className="gradient-rose text-primary-foreground font-body font-medium px-4 py-2.5 rounded-lg disabled:opacity-50 text-sm"
+          >
+            {inviting ? "..." : "Convidar"}
+          </button>
+        </div>
+
+        {invites.length > 0 && (
+          <div className="space-y-2 pt-2">
+            {invites.map(inv => (
+              <div key={inv.id} className="flex items-center justify-between bg-secondary rounded-lg px-4 py-2 text-sm font-body">
+                <span className="text-foreground">{inv.invite_email}</span>
+                {inv.accepted ? (
+                  <span className="flex items-center gap-1 text-emerald-400"><Check size={14} /> Aceito</span>
+                ) : (
+                  <span className="flex items-center gap-1 text-muted-foreground"><X size={14} /> Pendente</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Wedding config */}
       <div className="glass-card p-6 space-y-5">
         <div>
           <label className="text-xs text-muted-foreground font-body uppercase tracking-wider block mb-1.5">Nome da Noiva</label>
@@ -78,6 +171,7 @@ const ConfigPage = () => {
         </button>
       </div>
 
+      {/* Export */}
       <div className="glass-card p-6">
         <h2 className="font-heading text-lg text-foreground mb-3">Exportar Dados</h2>
         <p className="text-sm text-muted-foreground font-body mb-4">

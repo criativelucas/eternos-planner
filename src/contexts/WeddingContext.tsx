@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { WeddingItem, WeddingConfig, Parcela } from "@/types/wedding";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
 interface WeddingContextType {
   items: WeddingItem[];
   config: WeddingConfig;
+  configId: string | null;
   loading: boolean;
   addItem: (item: WeddingItem) => void;
   updateItem: (id: string, updates: Partial<WeddingItem>) => void;
@@ -49,35 +51,62 @@ export const WeddingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   });
   const [configId, setConfigId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
   const { toast } = useToast();
 
   const fetchData = useCallback(async () => {
+    if (!user) return;
     setLoading(true);
     try {
-      const [itemsRes, configRes] = await Promise.all([
-        supabase.from("wedding_items").select("*").order("created_at", { ascending: false }),
-        supabase.from("wedding_config").select("*").limit(1).single(),
-      ]);
+      // First try to accept any pending invite
+      await supabase.rpc("accept_couple_invite", { _user_id: user.id });
 
-      if (itemsRes.data) setItems(itemsRes.data.map(dbToItem));
-      if (configRes.data) {
-        setConfig(dbToConfig(configRes.data));
-        setConfigId(configRes.data.id);
+      // Get user's config id
+      const { data: cfgId } = await supabase.rpc("get_user_config_id", { _user_id: user.id });
+
+      if (cfgId) {
+        const [configRes, itemsRes] = await Promise.all([
+          supabase.from("wedding_config").select("*").eq("id", cfgId).single(),
+          supabase.from("wedding_items").select("*").eq("config_id", cfgId).order("created_at", { ascending: false }),
+        ]);
+
+        if (configRes.data) {
+          setConfig(dbToConfig(configRes.data));
+          setConfigId(configRes.data.id);
+        }
+        if (itemsRes.data) setItems(itemsRes.data.map(dbToItem));
+      } else {
+        // Create new wedding config for this user
+        const { data: newConfig, error } = await supabase.from("wedding_config").insert({
+          user_id: user.id,
+          nome_noiva: "Noiva",
+          nome_noivo: "Noivo",
+          data_casamento: "2026-12-31",
+          orcamento_total: 50000,
+        }).select().single();
+
+        if (newConfig) {
+          setConfig(dbToConfig(newConfig));
+          setConfigId(newConfig.id);
+          setItems([]);
+        }
+        if (error) console.error("Error creating config:", error);
       }
     } catch (e) {
       console.error("Error fetching data:", e);
     }
     setLoading(false);
-  }, []);
+  }, [user]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const addItem = useCallback(async (item: WeddingItem) => {
-    // Optimistic update
+    if (!configId) return;
     setItems(prev => [item, ...prev]);
 
     const { error } = await supabase.from("wedding_items").insert({
       id: item.id,
+      config_id: configId,
       nome: item.nome,
       categoria: item.categoria,
       fornecedor: item.fornecedor,
@@ -95,7 +124,7 @@ export const WeddingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
       setItems(prev => prev.filter(i => i.id !== item.id));
     }
-  }, [toast]);
+  }, [configId, toast]);
 
   const updateItem = useCallback(async (id: string, updates: Partial<WeddingItem>) => {
     setItems(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i));
@@ -150,7 +179,7 @@ export const WeddingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [configId, toast]);
 
   return (
-    <WeddingContext.Provider value={{ items, config, loading, addItem, updateItem, deleteItem, updateConfig, refetch: fetchData }}>
+    <WeddingContext.Provider value={{ items, config, configId, loading, addItem, updateItem, deleteItem, updateConfig, refetch: fetchData }}>
       {children}
     </WeddingContext.Provider>
   );
