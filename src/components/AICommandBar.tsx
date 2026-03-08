@@ -33,9 +33,12 @@ function parseBRLValue(raw: string): number {
 }
 
 function mockParseInput(input: string): Partial<WeddingItem> {
-  const lower = input.toLowerCase();
+  const lower = input.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const original = input.toLowerCase();
 
-  // Extract all monetary values (R$4.500 / R$ 800 / R$3.200,00)
+  console.log("[AI Parser] Input:", input);
+
+  // Extract all monetary values - handle R$4.500 / R$ 800 / 4500 reais / 800,00
   const moneyRegex = /r\$\s?([\d.,]+)/gi;
   const values: number[] = [];
   let m;
@@ -43,75 +46,106 @@ function mockParseInput(input: string): Partial<WeddingItem> {
     values.push(parseBRLValue(m[1]));
   }
 
-  // Also find standalone numbers with x (e.g., "3x de R$600", "4x de R$500")
-  const parcelaValorMatch = lower.match(/(\d+)\s*(?:x|parcelas?|vezes)\s*(?:de\s*)?r\$\s?([\d.,]+)/i);
-
-  const categoriaMap: Record<string, WeddingItem["categoria"]> = {
-    buffet: "Buffet", fotógrafo: "Foto/Vídeo", fotografo: "Foto/Vídeo", foto: "Foto/Vídeo",
-    vídeo: "Foto/Vídeo", video: "Foto/Vídeo", vestido: "Vestuário", traje: "Vestuário",
-    noiva: "Vestuário", noivo: "Vestuário", decoração: "Decoração", decoracao: "Decoração",
-    dj: "Música", música: "Música", musica: "Música", banda: "Música",
-    convite: "Convites", lua: "Lua de Mel", aliança: "Alianças", alianca: "Alianças",
-    bolo: "Bolo", flor: "Flores", flores: "Flores", transporte: "Transporte",
-    carro: "Transporte", beleza: "Beleza", make: "Beleza", maquiagem: "Beleza",
-    venue: "Venue", espaço: "Venue", espaco: "Venue", salão: "Venue", salao: "Venue",
-    igreja: "Venue", cerimônia: "Venue", cerimonia: "Venue",
-  };
-
-  let categoria: WeddingItem["categoria"] = "Outros";
-  for (const [key, val] of Object.entries(categoriaMap)) {
-    if (lower.includes(key)) { categoria = val; break; }
+  // If no R$ found, try to find standalone large numbers (likely prices)
+  if (values.length === 0) {
+    const numRegex = /\b(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)\b/g;
+    let nm;
+    while ((nm = numRegex.exec(input)) !== null) {
+      const val = parseBRLValue(nm[1]);
+      if (val >= 50) values.push(val); // Only consider values >= 50 as prices
+    }
   }
 
-  // Detect installments: "3x de R$600", "faltam 3x", "4 parcelas"
+  console.log("[AI Parser] Values found:", values);
+
+  // Find installment patterns: "3x de R$600", "4x de R$500", "faltam 3x"
+  const parcelaValorMatch = original.match(/(\d+)\s*(?:x|parcelas?|vezes)\s*(?:de\s*)?r?\$?\s?([\d.,]+)/i);
+  const parcelasOnlyMatch = original.match(/(\d+)\s*(?:x|parcelas?|vezes)/);
+
+  // Category detection - search in normalized (no accents) text
+  const categoriaMap: [string[], WeddingItem["categoria"]][] = [
+    [["buffet", "gastronomia", "comida", "jantar", "almoco"], "Buffet"],
+    [["fotografo", "fotografia", "foto", "video", "filmagem"], "Foto/Vídeo"],
+    [["vestido", "traje", "roupa", "terno"], "Vestuário"],
+    [["decoracao", "decor", "arranjo"], "Decoração"],
+    [["dj", "musica", "banda", "som", "sonorizacao"], "Música"],
+    [["convite", "papelaria", "save the date"], "Convites"],
+    [["lua de mel", "viagem", "honeymoon"], "Lua de Mel"],
+    [["alianca", "anel", "joias", "joia"], "Alianças"],
+    [["bolo", "doce", "doceria", "confeitaria"], "Bolo"],
+    [["flor", "flores", "florista", "buque"], "Flores"],
+    [["transporte", "carro", "limousine", "limusine"], "Transporte"],
+    [["beleza", "make", "maquiagem", "cabelo", "penteado"], "Beleza"],
+    [["venue", "espaco", "salao", "igreja", "cerimonia", "local", "chacara", "sitio", "fazenda"], "Venue"],
+  ];
+
+  let categoria: WeddingItem["categoria"] = "Outros";
+  for (const [keywords, cat] of categoriaMap) {
+    if (keywords.some(k => lower.includes(k))) {
+      categoria = cat;
+      break;
+    }
+  }
+
+  console.log("[AI Parser] Categoria:", categoria);
+
+  // Detect installments
   let numParcelas = 0;
   let valorParcela = 0;
 
   if (parcelaValorMatch) {
     numParcelas = parseInt(parcelaValorMatch[1]);
     valorParcela = parseBRLValue(parcelaValorMatch[2]);
-  } else {
-    const parcelasMatch = lower.match(/(\d+)\s*(?:x|parcelas?|vezes)/);
-    if (parcelasMatch) numParcelas = parseInt(parcelasMatch[1]);
+  } else if (parcelasOnlyMatch) {
+    numParcelas = parseInt(parcelasOnlyMatch[1]);
   }
 
   // Determine valorTotal and valorPago from context
   let valorTotal = 0;
   let valorPago = 0;
 
-  const hasPaguei = /paguei|pago|entrada|dei|pagou|quitei/.test(lower);
-  const hasFaltam = /faltam?|restam?|restante/.test(lower);
-  const hasCusta = /custa|custo|valor|preço|preco|por|total/.test(lower);
-  const hasTudo = /tudo|total|quitei|completo/.test(lower);
+  const hasPaguei = /paguei|pago|entrada|dei|pagou|quitei|depositei/.test(original);
+  const hasFaltam = /faltam?|restam?|restante|falta/.test(original);
+  const hasCusta = /custa|custou|valor|preco|preço|por|total|cobra|cobrou/.test(original);
+  const hasTudo = /tudo|total|quitei|completo|inteiro|a vista|à vista/.test(original);
+  const hasContratei = /contratei|reservei|fechei|comprei|acertei|combinei/.test(original);
 
   if (values.length >= 2 && hasFaltam && numParcelas > 0) {
-    // "Paguei R$800 do buffet, faltam 3x de R$600"
+    // "Paguei R$800, faltam 3x de R$600"
     valorPago = values[0];
     valorParcela = valorParcela || values[1];
     valorTotal = valorPago + (numParcelas * valorParcela);
-  } else if (values.length >= 2 && hasPaguei) {
+  } else if (values.length >= 2 && (hasPaguei || hasContratei)) {
     // "Contratei por R$4.500, dei entrada de R$1.500"
-    valorTotal = values[0];
-    valorPago = values[1];
+    if (values[0] > values[1]) {
+      valorTotal = values[0];
+      valorPago = values[1];
+    } else {
+      valorPago = values[0];
+      valorTotal = values[1];
+    }
+  } else if (values.length >= 2) {
+    // Two values, first is likely total
+    valorTotal = Math.max(...values);
+    valorPago = Math.min(...values);
   } else if (values.length === 1 && hasPaguei && hasTudo) {
     // "Comprei os convites por R$800, já paguei tudo"
     valorTotal = values[0];
     valorPago = values[0];
-  } else if (values.length === 1 && hasPaguei && !hasCusta) {
+  } else if (values.length === 1 && hasPaguei && !hasCusta && !hasContratei) {
     // "Paguei a 2ª parcela do buffet de R$800"
     valorPago = values[0];
     valorTotal = values[0];
   } else if (values.length === 1 && numParcelas > 0 && valorParcela > 0) {
-    // "Reservei o DJ, 4x de R$500"
     valorTotal = numParcelas * valorParcela;
   } else if (values.length === 1) {
-    // "O vestido custa R$3.200"
     valorTotal = values[0];
+    if (hasPaguei) valorPago = values[0];
   } else if (numParcelas > 0 && valorParcela > 0) {
     valorTotal = numParcelas * valorParcela;
   }
 
-  // Build parcelas array
+  // Build parcelas
   const parcelas: WeddingItem["parcelas"] = [];
   if (numParcelas > 0) {
     const vp = valorParcela || (valorTotal > 0 ? valorTotal / numParcelas : 0);
@@ -127,39 +161,43 @@ function mockParseInput(input: string): Partial<WeddingItem> {
     }
   }
 
-  // Extract a better name
+  // Extract name from sentence
   let nome = "";
-  // Try to get the main subject from the sentence
   const nomePatterns = [
-    /(?:contratei|reservei|fechei|comprei|paguei)\s+(?:o|a|os|as)?\s*(.+?)(?:\s+por|\s+de|\s*,|\s*$)/i,
-    /^(.+?)(?:\s+(?:custa|custou|ficou|por|de)\s)/i,
+    /(?:contratei|reservei|fechei|comprei|paguei|acertei|combinei)\s+(?:o|a|os|as|um|uma)?\s*(.+?)(?:\s+(?:por|de|no valor|,|$))/i,
+    /(?:o|a)\s+(.+?)(?:\s+(?:custa|custou|ficou|fica|cobra|por)\s)/i,
+    /^(.+?)(?:\s+(?:custa|custou|ficou|por|de|,)\s)/i,
   ];
   for (const pattern of nomePatterns) {
     const match = input.match(pattern);
     if (match?.[1]) {
-      nome = match[1].trim().replace(/^(o|a|os|as)\s+/i, "");
-      if (nome.length > 3 && nome.length < 50) break;
-      nome = "";
+      const candidate = match[1].trim().replace(/^(o|a|os|as|do|da|dos|das)\s+/i, "");
+      if (candidate.length >= 2 && candidate.length < 50) {
+        nome = candidate;
+        break;
+      }
     }
   }
-  if (!nome) nome = categoria;
-  // Capitalize first letter
+  if (!nome || nome.length < 2) nome = categoria;
   nome = nome.charAt(0).toUpperCase() + nome.slice(1);
 
   const status = valorPago >= valorTotal && valorTotal > 0 ? "concluido" as const
     : valorPago > 0 ? "em_andamento" as const
     : "pendente" as const;
 
-  return {
+  const result = {
     nome,
     categoria,
     valorTotal,
     valorPago,
     parcelas,
     status,
-    prioridade: "media",
+    prioridade: "media" as const,
     notas: input,
   };
+
+  console.log("[AI Parser] Result:", result);
+  return result;
 }
 
 const AICommandBar = () => {
