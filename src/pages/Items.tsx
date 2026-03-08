@@ -1,10 +1,12 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Filter, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { Search, Filter, ChevronDown, ChevronUp, Trash2, Pencil } from "lucide-react";
 import { useWedding } from "@/contexts/WeddingContext";
 import { CATEGORIAS, CATEGORIA_ICONS, STATUS_COLORS, STATUS_LABELS, Categoria, Status } from "@/types/wedding";
 import { format, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import EditItemDialog from "@/components/EditItemDialog";
+import { WeddingItem } from "@/types/wedding";
 
 const Items = () => {
   const { items, deleteItem, updateItem } = useWedding();
@@ -13,6 +15,8 @@ const Items = () => {
   const [filterCat, setFilterCat] = useState<Categoria | "">("");
   const [filterStatus, setFilterStatus] = useState<Status | "">("");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [editItem, setEditItem] = useState<WeddingItem | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
   const filtered = useMemo(() => {
     return items.filter(i => {
@@ -112,7 +116,17 @@ const Items = () => {
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => {
+                        setEditItem(item);
+                        setEditOpen(true);
+                      }}
+                      className="text-muted-foreground hover:text-primary p-1"
+                      title="Editar"
+                    >
+                      <Pencil size={14} />
+                    </button>
                     <button
                       onClick={() => setExpanded(expanded === item.id ? null : item.id)}
                       className="text-muted-foreground hover:text-foreground p-1"
@@ -179,6 +193,8 @@ const Items = () => {
           </AnimatePresence>
         </div>
       )}
+
+      <EditItemDialog item={editItem} open={editOpen} onOpenChange={setEditOpen} />
     </div>
   );
 };
