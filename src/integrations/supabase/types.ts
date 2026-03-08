@@ -14,7 +14,84 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      wedding_config: {
+        Row: {
+          created_at: string
+          data_casamento: string
+          id: string
+          nome_noiva: string
+          nome_noivo: string
+          orcamento_total: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          data_casamento?: string
+          id?: string
+          nome_noiva?: string
+          nome_noivo?: string
+          orcamento_total?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          data_casamento?: string
+          id?: string
+          nome_noiva?: string
+          nome_noivo?: string
+          orcamento_total?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      wedding_items: {
+        Row: {
+          categoria: string
+          created_at: string
+          fornecedor: string | null
+          id: string
+          nome: string
+          notas: string | null
+          parcelas: Json
+          prazo: string | null
+          prioridade: string
+          status: string
+          updated_at: string
+          valor_pago: number
+          valor_total: number
+        }
+        Insert: {
+          categoria?: string
+          created_at?: string
+          fornecedor?: string | null
+          id?: string
+          nome: string
+          notas?: string | null
+          parcelas?: Json
+          prazo?: string | null
+          prioridade?: string
+          status?: string
+          updated_at?: string
+          valor_pago?: number
+          valor_total?: number
+        }
+        Update: {
+          categoria?: string
+          created_at?: string
+          fornecedor?: string | null
+          id?: string
+          nome?: string
+          notas?: string | null
+          parcelas?: Json
+          prazo?: string | null
+          prioridade?: string
+          status?: string
+          updated_at?: string
+          valor_pago?: number
+          valor_total?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
