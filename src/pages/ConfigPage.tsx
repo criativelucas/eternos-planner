@@ -32,18 +32,20 @@ const ConfigPage = () => {
     if (!inviteEmail || !configId || !user) return;
     setInviting(true);
 
-    const { error } = await supabase.from("couple_invites").insert({
-      config_id: configId,
-      invite_email: inviteEmail,
-      invited_by: user.id,
-    });
+    try {
+      const { data, error } = await supabase.functions.invoke("invite-partner", {
+        body: { partnerEmail: inviteEmail, configId },
+      });
 
-    if (error) {
-      toast({ title: "Erro ao convidar", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Convite enviado! 💍", description: `${inviteEmail} pode criar uma conta para acessar o planejamento.` });
-      setInvites(prev => [...prev, { id: crypto.randomUUID(), invite_email: inviteEmail, accepted: false }]);
-      setInviteEmail("");
+      if (error) {
+        toast({ title: "Erro ao convidar", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "Convite enviado! 💍", description: `Um email foi enviado para ${inviteEmail} com o link de acesso.` });
+        setInvites(prev => [...prev, { id: crypto.randomUUID(), invite_email: inviteEmail, accepted: false }]);
+        setInviteEmail("");
+      }
+    } catch (err) {
+      toast({ title: "Erro ao convidar", description: "Tente novamente.", variant: "destructive" });
     }
     setInviting(false);
   };
