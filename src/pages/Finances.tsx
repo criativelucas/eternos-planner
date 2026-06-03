@@ -4,6 +4,8 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { CATEGORIA_ICONS, Categoria } from "@/types/wedding";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import FinancialClosingPanel from "@/components/FinancialClosingPanel";
+
 
 const COLORS = [
   "hsl(27 47% 60%)", "hsl(15 50% 72%)", "hsl(340 40% 55%)", "hsl(200 50% 55%)",

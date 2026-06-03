@@ -1,12 +1,15 @@
 import { useMemo } from "react";
 import { motion } from "framer-motion";
-import { DollarSign, Target, CheckCircle, CalendarClock, AlertTriangle } from "lucide-react";
+import { DollarSign, Target, CheckCircle, CalendarClock, AlertTriangle, Wallet, Calendar } from "lucide-react";
 import { useWedding } from "@/contexts/WeddingContext";
 import ProgressRing from "@/components/ProgressRing";
 import StatCard from "@/components/StatCard";
 import { CATEGORIA_ICONS, STATUS_COLORS, STATUS_LABELS } from "@/types/wedding";
-import { differenceInDays, format, parseISO, isPast } from "date-fns";
+import { differenceInDays, format, parseISO, isPast, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import InstallmentAlert from "@/components/InstallmentAlert";
+import MonthlyExpenseChart from "@/components/MonthlyExpenseChart";
+import { fmtBRL, totalFaltante, faltanteItem, nextParcela } from "@/lib/finance";
 
 const Dashboard = () => {
   const { items, config } = useWedding();
@@ -23,16 +26,19 @@ const Dashboard = () => {
       .slice(0, 5);
 
     const overdue = items.filter(i => i.prazo && isPast(parseISO(i.prazo)) && i.status !== "concluido");
-
     const progress = items.length > 0 ? (concluidos / items.length) * 100 : 0;
+    const itemsAberto = items.filter(i => faltanteItem(i) > 0).length;
+    const nextP = nextParcela(items);
+    const nextPDays = nextP?.dataVencimento ? differenceInDays(parseISO(nextP.dataVencimento), startOfDay(new Date())) : null;
+    const nextPOverdue = nextPDays !== null && nextPDays < 0;
 
-    return { totalGasto, totalPrevisto, concluidos, daysLeft, upcoming, overdue, progress };
+    return { totalGasto, totalPrevisto, concluidos, daysLeft, upcoming, overdue, progress, itemsAberto, nextP, nextPDays, nextPOverdue };
   }, [items, config]);
-
-  const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   return (
     <div className="space-y-8 animate-fade-in">
+      <InstallmentAlert />
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -66,17 +72,54 @@ const Dashboard = () => {
           <ProgressRing progress={stats.progress} />
         </motion.div>
 
-        <div className="md:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard icon={DollarSign} label="Total Gasto" value={fmt(stats.totalGasto)} />
-          <StatCard icon={Target} label="Total Previsto" value={fmt(stats.totalPrevisto)} />
-          <StatCard icon={CheckCircle} label="Concluídos" value={`${stats.concluidos}/${items.length}`} />
-          <StatCard
-            icon={CalendarClock}
-            label="Próximo Prazo"
-            value={stats.upcoming[0]?.nome || "—"}
-            subtitle={stats.upcoming[0]?.prazo ? format(parseISO(stats.upcoming[0].prazo), "dd/MM/yyyy") : undefined}
-          />
+        <div className="md:col-span-4 overflow-x-auto md:overflow-visible">
+          <div className="flex md:grid md:grid-cols-3 gap-4 min-w-max md:min-w-0">
+            <div className="w-44 md:w-auto shrink-0"><StatCard icon={DollarSign} label="Total Gasto" value={fmtBRL(stats.totalGasto)} /></div>
+            <div className="w-44 md:w-auto shrink-0"><StatCard icon={Target} label="Total Previsto" value={fmtBRL(stats.totalPrevisto)} /></div>
+            <div className="w-44 md:w-auto shrink-0"><StatCard icon={CheckCircle} label="Concluídos" value={`${stats.concluidos}/${items.length}`} /></div>
+            <div className="w-44 md:w-auto shrink-0">
+              <StatCard
+                icon={CalendarClock}
+                label="Próximo Prazo"
+                value={stats.upcoming[0]?.nome || "—"}
+                subtitle={stats.upcoming[0]?.prazo ? format(parseISO(stats.upcoming[0].prazo), "dd/MM/yyyy") : undefined}
+              />
+            </div>
+            <div className="w-44 md:w-auto shrink-0">
+              <StatCard
+                icon={Wallet}
+                label="Total Restante a Pagar"
+                value={fmtBRL(totalFaltante(items))}
+                subtitle={`em ${stats.itemsAberto} ${stats.itemsAberto === 1 ? "item em aberto" : "itens em aberto"}`}
+              />
+            </div>
+            <div className="w-44 md:w-auto shrink-0">
+              <div className={`glass-card p-5 flex flex-col gap-3 ${stats.nextPOverdue ? "border-destructive/40 bg-destructive/5" : ""}`}>
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Calendar size={16} />
+                  <span className="text-xs font-body uppercase tracking-wider">Próxima Parcela</span>
+                </div>
+                <p className="font-accent text-2xl text-foreground">
+                  {stats.nextP ? fmtBRL(stats.nextP.valor) : "—"}
+                </p>
+                {stats.nextP && stats.nextPDays !== null && (
+                  <p className={`text-xs font-body ${stats.nextPOverdue ? "text-destructive" : "text-muted-foreground"}`}>
+                    {stats.nextPOverdue && "⚠️ "}{stats.nextP.itemNome} — {stats.nextPOverdue ? `venceu há ${Math.abs(stats.nextPDays)} dia(s)` : `vence em ${stats.nextPDays} dia(s)`}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Monthly preview */}
+      <div className="glass-card p-6">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="font-heading text-lg text-foreground">Próximos meses</h2>
+          <span className="text-xs text-muted-foreground font-body">3 meses</span>
+        </div>
+        <MonthlyExpenseChart compact monthsWindow={3} />
       </div>
 
       {/* Overdue Warning */}
