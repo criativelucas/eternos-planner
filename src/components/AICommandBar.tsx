@@ -12,7 +12,12 @@ const PLACEHOLDERS = [
   'O vestido ficou para maio, custa R$3.200',
   'Reservei o DJ por R$2.000, 4x de R$500',
   'Comprei os convites por R$800, já paguei tudo',
+  'Paguei a 3ª parcela do fotógrafo de R$400',
+  'Falta pagar R$600 do DJ, vence dia 10/07',
+  'Já quitamos os convites',
+  'Ainda não contratei maquiagem e hair, quero reservar R$800',
 ];
+
 
 const AICommandBar = () => {
   const [open, setOpen] = useState(false);
@@ -37,9 +42,24 @@ const AICommandBar = () => {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setOpen(true);
+      if (detail?.text) setInput(detail.text);
+    };
+    window.addEventListener("ai-commandbar-open", onOpen as EventListener);
+    return () => window.removeEventListener("ai-commandbar-open", onOpen as EventListener);
+  }, []);
+
   const handleSubmit = async () => {
     if (!input.trim()) return;
     setLoading(true);
+    try {
+      const c = Number(localStorage.getItem("aiUsageCount") || "0") + 1;
+      localStorage.setItem("aiUsageCount", String(c));
+    } catch {}
+
 
     try {
       const { data, error } = await supabase.functions.invoke("parse-wedding-input", {

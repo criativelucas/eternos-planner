@@ -2,29 +2,77 @@ import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { useWedding } from "@/contexts/WeddingContext";
 import { CATEGORIA_ICONS, STATUS_COLORS, STATUS_LABELS } from "@/types/wedding";
-import { format, parseISO, isPast } from "date-fns";
+import { format, parseISO, isPast, differenceInDays, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Heart } from "lucide-react";
+import { allParcelas, parcelaColor } from "@/lib/finance";
+
+interface TimelineEvent {
+  id: string;
+  date: string;
+  label: string;
+  sublabel: string;
+  icon: string;
+  color: string;
+  status: string;
+  done: boolean;
+}
 
 const Timeline = () => {
-  const { items } = useWedding();
+  const { items, config } = useWedding();
 
   const grouped = useMemo(() => {
-    const withDeadline = items
-      .filter(i => i.prazo)
-      .sort((a, b) => a.prazo!.localeCompare(b.prazo!));
+    const events: TimelineEvent[] = [];
 
-    const groups: Record<string, typeof withDeadline> = {};
-    withDeadline.forEach(item => {
-      const key = format(parseISO(item.prazo!), "MMMM yyyy", { locale: ptBR });
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(item);
+    // Items with prazo
+    items.filter(i => i.prazo).forEach(i => {
+      const done = i.status === "concluido";
+      const overdue = isPast(parseISO(i.prazo!)) && !done;
+      const days = differenceInDays(parseISO(i.prazo!), startOfDay(new Date()));
+      let color = "#6B7280";
+      if (done) color = "#10B981";
+      else if (overdue) color = "#EF4444";
+      else if (days <= 7) color = "#F59E0B";
+      else if (days <= 30) color = "#C9956A";
+      events.push({
+        id: `item-${i.id}`,
+        date: i.prazo!,
+        label: i.nome,
+        sublabel: `Prazo · ${i.fornecedor || i.categoria}`,
+        icon: CATEGORIA_ICONS[i.categoria],
+        color,
+        status: STATUS_LABELS[i.status],
+        done,
+      });
     });
 
+    // All parcelas with dataVencimento
+    allParcelas(items).filter(p => p.dataVencimento).forEach(p => {
+      events.push({
+        id: `parc-${p.itemId}-${p.numero}`,
+        date: p.dataVencimento,
+        label: `${p.itemNome} — Parcela ${p.numero}`,
+        sublabel: `Parcela · R$ ${p.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+        icon: CATEGORIA_ICONS[p.categoria as keyof typeof CATEGORIA_ICONS] || "💳",
+        color: parcelaColor(p),
+        status: p.pago ? "Pago" : "Pendente",
+        done: p.pago,
+      });
+    });
+
+    events.sort((a, b) => a.date.localeCompare(b.date));
+
+    const groups: Record<string, TimelineEvent[]> = {};
+    events.forEach(ev => {
+      const key = format(parseISO(ev.date), "MMMM yyyy", { locale: ptBR });
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(ev);
+    });
     return groups;
   }, [items]);
 
   const months = Object.keys(grouped);
+  const weddingMonth = config.dataCasamento ? format(parseISO(config.dataCasamento), "MMMM yyyy", { locale: ptBR }) : null;
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -34,11 +82,10 @@ const Timeline = () => {
         <div className="glass-card p-12 text-center">
           <p className="text-4xl mb-3">📅</p>
           <p className="font-heading text-xl text-foreground">Nenhum prazo definido</p>
-          <p className="text-sm text-muted-foreground font-body mt-1">Adicione prazos aos seus itens para visualizar a linha do tempo.</p>
+          <p className="text-sm text-muted-foreground font-body mt-1">Adicione prazos e parcelas aos seus itens.</p>
         </div>
       ) : (
         <div className="relative">
-          {/* Vertical line */}
           <div className="absolute left-4 md:left-6 top-0 bottom-0 w-px bg-border" />
 
           {months.map((month, mi) => (
@@ -49,35 +96,34 @@ const Timeline = () => {
               </div>
 
               <div className="ml-10 md:ml-14 space-y-3">
-                {grouped[month].map((item, i) => {
-                  const overdue = isPast(parseISO(item.prazo!)) && item.status !== "concluido";
+                {grouped[month].map((ev, i) => {
+                  const overdue = ev.color === "#EF4444";
                   return (
                     <motion.div
-                      key={item.id}
+                      key={ev.id}
                       className={`glass-card p-4 ${overdue ? "border-destructive/40" : ""}`}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: (mi * 0.1) + (i * 0.05) }}
+                      transition={{ delay: (mi * 0.05) + (i * 0.03) }}
+                      style={{ borderLeft: `3px solid ${ev.color}` }}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          <span className="text-xl">{CATEGORIA_ICONS[item.categoria]}</span>
+                          <span className="text-xl">{ev.icon}</span>
                           <div>
                             <div className="flex items-center gap-2">
-                              <p className="font-body text-sm text-foreground font-medium">{item.nome}</p>
+                              <p className="font-body text-sm text-foreground font-medium">{ev.label}</p>
                               {overdue && <AlertTriangle size={14} className="text-destructive" />}
                             </div>
-                            <p className="text-xs text-muted-foreground font-body">
-                              {item.fornecedor || item.categoria}
-                            </p>
+                            <p className="text-xs text-muted-foreground font-body">{ev.sublabel}</p>
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-body ${STATUS_COLORS[item.status]}`}>
-                            {STATUS_LABELS[item.status]}
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-body" style={{ background: `${ev.color}33`, color: ev.color }}>
+                            {ev.status}
                           </span>
                           <p className="text-xs text-muted-foreground font-body mt-1">
-                            {format(parseISO(item.prazo!), "dd/MM/yyyy")}
+                            {format(parseISO(ev.date), "dd/MM/yyyy")}
                           </p>
                         </div>
                       </div>
@@ -87,6 +133,33 @@ const Timeline = () => {
               </div>
             </div>
           ))}
+
+          {/* Wedding day pinned event */}
+          {config.dataCasamento && (
+            <div className="mb-8">
+              <div className="flex items-center gap-3 mb-4 relative">
+                <div className="w-5 h-5 rounded-full z-10 relative left-[5px] md:left-[13px] flex items-center justify-center" style={{ background: "linear-gradient(135deg, #d4af37, #f5c462)" }}>
+                  <Heart size={10} className="text-white" />
+                </div>
+                <h2 className="font-heading text-lg ml-4" style={{ color: "#d4af37" }}>O Grande Dia ✨</h2>
+              </div>
+              <div className="ml-10 md:ml-14">
+                <motion.div
+                  className="glass-card p-6 text-center"
+                  style={{ borderLeft: "4px solid #d4af37", background: "linear-gradient(135deg, hsl(var(--card)), hsl(27 47% 60% / 0.05))" }}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                >
+                  <p className="text-3xl mb-2">💍</p>
+                  <p className="font-heading text-2xl text-foreground">Dia do Casamento</p>
+                  <p className="font-accent text-lg text-primary mt-1">
+                    {format(parseISO(config.dataCasamento), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                  </p>
+                  <p className="text-xs text-muted-foreground font-body mt-2">{config.nomeNoiva} & {config.nomeNoivo}</p>
+                </motion.div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
