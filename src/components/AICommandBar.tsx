@@ -42,9 +42,24 @@ const AICommandBar = () => {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setOpen(true);
+      if (detail?.text) setInput(detail.text);
+    };
+    window.addEventListener("ai-commandbar-open", onOpen as EventListener);
+    return () => window.removeEventListener("ai-commandbar-open", onOpen as EventListener);
+  }, []);
+
   const handleSubmit = async () => {
     if (!input.trim()) return;
     setLoading(true);
+    try {
+      const c = Number(localStorage.getItem("aiUsageCount") || "0") + 1;
+      localStorage.setItem("aiUsageCount", String(c));
+    } catch {}
+
 
     try {
       const { data, error } = await supabase.functions.invoke("parse-wedding-input", {
