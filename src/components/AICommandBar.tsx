@@ -12,7 +12,12 @@ const PLACEHOLDERS = [
   'O vestido ficou para maio, custa R$3.200',
   'Reservei o DJ por R$2.000, 4x de R$500',
   'Comprei os convites por R$800, já paguei tudo',
+  'Paguei a 3ª parcela do fotógrafo de R$400',
+  'Falta pagar R$600 do DJ, vence dia 10/07',
+  'Já quitamos os convites',
+  'Ainda não contratei maquiagem e hair, quero reservar R$800',
 ];
+
 
 const AICommandBar = () => {
   const [open, setOpen] = useState(false);
