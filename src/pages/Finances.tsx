@@ -141,8 +141,11 @@ const Finances = () => {
           )}
         </div>
       </div>
+
+      <FinancialClosingPanel />
     </div>
   );
 };
+
 
 export default Finances;
