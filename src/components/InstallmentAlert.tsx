@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { AlertTriangle, Bell, X } from "lucide-react";
 import { useWedding } from "@/contexts/WeddingContext";
-import { overdueParcelas, upcomingParcelas, fmtBRL } from "@/lib/finance";
-import { differenceInDays, parseISO, startOfDay } from "date-fns";
+import { overdueParcelas, upcomingParcelas, allParcelas, fmtBRL } from "@/lib/finance";
+import { daysUntil } from "@/lib/date";
 
 const InstallmentAlert = () => {
   const { items } = useWedding();
@@ -10,8 +10,16 @@ const InstallmentAlert = () => {
 
   const overdue = overdueParcelas(items);
   const upcoming = upcomingParcelas(items, 7);
+  const total = allParcelas(items).length;
 
-  if (dismissed || (overdue.length === 0 && upcoming.length === 0)) return null;
+  const suspicious = total > 0 && overdue.length / total > 0.5;
+  const recentOverdue = overdue.filter(p => {
+    const d = daysUntil(p.dataVencimento);
+    return d >= -90 && d < 0;
+  });
+
+  if (dismissed) return null;
+  if (!suspicious && recentOverdue.length === 0 && upcoming.length === 0) return null;
 
   const dismiss = () => {
     sessionStorage.setItem("alertDismissed", "1");
@@ -24,14 +32,21 @@ const InstallmentAlert = () => {
         <X size={14} />
       </button>
       <div className="space-y-1 pr-6">
-        {overdue.length > 0 && (
+        {suspicious ? (
           <p className="text-sm font-body flex items-center gap-2">
             <AlertTriangle size={14} />
-            Você tem <strong>{overdue.length}</strong> parcela(s) vencida(s). Verifique seus pagamentos.
+            ⚠️ Detectamos possíveis datas incorretas. Verifique seus prazos.
           </p>
+        ) : (
+          recentOverdue.length > 0 && (
+            <p className="text-sm font-body flex items-center gap-2">
+              <AlertTriangle size={14} />
+              Você tem <strong>{recentOverdue.length}</strong> parcela(s) vencida(s). Verifique seus pagamentos.
+            </p>
+          )
         )}
-        {upcoming.slice(0, 3).map((p, i) => {
-          const days = differenceInDays(parseISO(p.dataVencimento), startOfDay(new Date()));
+        {!suspicious && upcoming.slice(0, 3).map((p, i) => {
+          const days = daysUntil(p.dataVencimento);
           return (
             <p key={`${p.itemId}-${p.numero}-${i}`} className="text-sm font-body flex items-center gap-2">
               <Bell size={14} />

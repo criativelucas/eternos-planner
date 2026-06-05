@@ -3,6 +3,7 @@ import { WeddingItem, WeddingConfig, Parcela } from "@/types/wedding";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { fixWrongDates } from "@/lib/fixWrongDates";
 
 interface WeddingContextType {
   items: WeddingItem[];
@@ -65,6 +66,9 @@ export const WeddingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const { data: cfgId } = await supabase.rpc("get_user_config_id", { _user_id: user.id });
 
       if (cfgId) {
+        // One-time migration: fix legacy parcela dates that landed in the past.
+        await fixWrongDates(cfgId);
+
         const [configRes, itemsRes] = await Promise.all([
           supabase.from("wedding_config").select("*").eq("id", cfgId).single(),
           supabase.from("wedding_items").select("*").eq("config_id", cfgId).order("created_at", { ascending: false }),

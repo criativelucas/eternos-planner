@@ -25,7 +25,7 @@ const AICommandBar = () => {
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<Partial<WeddingItem> | null>(null);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
-  const { addItem } = useWedding();
+  const { addItem, config } = useWedding();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -63,7 +63,7 @@ const AICommandBar = () => {
 
     try {
       const { data, error } = await supabase.functions.invoke("parse-wedding-input", {
-        body: { message: input.trim() },
+        body: { message: input.trim(), weddingDate: config.dataCasamento },
       });
 
       if (error) throw error;

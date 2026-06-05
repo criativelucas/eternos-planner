@@ -10,8 +10,8 @@ interface Props {
 }
 
 const MonthlyExpenseChart = ({ compact = false, monthsWindow }: Props) => {
-  const { items } = useWedding();
-  const dataAll = useMemo(() => monthlyExpense(items), [items]);
+  const { items, config } = useWedding();
+  const dataAll = useMemo(() => monthlyExpense(items, config.dataCasamento), [items, config.dataCasamento]);
   const currentMonth = format(new Date(), "yyyy-MM");
   const data = monthsWindow ? dataAll.slice(0, monthsWindow) : dataAll;
 
@@ -22,9 +22,9 @@ const MonthlyExpenseChart = ({ compact = false, monthsWindow }: Props) => {
   const avg = dataAll.length ? dataAll.reduce((s, d) => s + d.value, 0) / dataAll.length : 0;
 
   if (data.length === 0) {
-    return compact ? null : (
-      <div className="glass-card p-6 text-center text-sm text-muted-foreground font-body">
-        Nenhuma parcela futura cadastrada para projetar gastos mensais.
+    return (
+      <div className={compact ? "py-4 text-center text-xs text-muted-foreground font-body" : "glass-card p-6 text-center text-sm text-muted-foreground font-body"}>
+        Adicione prazos aos seus itens para ver a previsão mensal
       </div>
     );
   }
