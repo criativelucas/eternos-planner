@@ -5,7 +5,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `Você é um assistente de planejamento de casamento. O usuário vai te dizer algo sobre os preparativos do casamento em linguagem natural. Extraia as informações e retorne APENAS um JSON válido, sem texto extra, no seguinte formato:
+function buildSystemPrompt(today: string, weddingDate: string): string {
+  return `CONTEXTO IMPORTANTE: A data de hoje é ${today}. O casamento está marcado para ${weddingDate}. REGRA CRÍTICA: Todas as datas de parcelas, vencimentos e prazos que você gerar DEVEM ser entre hoje e ${weddingDate}. NUNCA gere datas no passado. Se o usuário não especificar mês/ano, distribua as parcelas mensalmente a partir do mês seguinte ao atual, sem ultrapassar ${weddingDate}.
+
+Você é um assistente de planejamento de casamento. O usuário vai te dizer algo sobre os preparativos do casamento em linguagem natural. Extraia as informações e retorne APENAS um JSON válido, sem texto extra, no seguinte formato:
 
 {
   "action": "add" | "update" | "delete",
@@ -23,7 +26,8 @@ const SYSTEM_PROMPT = `Você é um assistente de planejamento de casamento. O us
   }
 }
 
-Se algum campo não for mencionado, use null ou valores padrão razoáveis. Para parcelas, calcule as datas estimadas se não forem mencionadas (uma por mês a partir de hoje). Sempre responda APENAS com JSON válido. Valores monetários brasileiros usam ponto como separador de milhar (ex: R$4.500 = 4500 reais).`;
+Se algum campo não for mencionado, use null ou valores padrão razoáveis. Para parcelas, calcule as datas estimadas se não forem mencionadas (uma por mês a partir do próximo mês, sem ultrapassar a data do casamento). Sempre responda APENAS com JSON válido. Valores monetários brasileiros usam ponto como separador de milhar (ex: R$4.500 = 4500 reais).`;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -31,8 +35,11 @@ serve(async (req) => {
   }
 
   try {
-    const { message } = await req.json();
-    
+    const body = await req.json();
+    const message: string = body?.message;
+    const weddingDate: string = body?.weddingDate || "2026-08-29";
+    const today = new Date().toISOString().split("T")[0];
+
     if (!message || typeof message !== "string" || message.trim().length === 0) {
       return new Response(JSON.stringify({ error: "Mensagem vazia" }), {
         status: 400,
@@ -45,7 +52,7 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    console.log("Processing message:", message);
+    console.log("Processing message:", message, "today=", today, "wedding=", weddingDate);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -56,7 +63,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: buildSystemPrompt(today, weddingDate) },
           { role: "user", content: message },
         ],
       }),
@@ -65,7 +72,7 @@ serve(async (req) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error("AI gateway error:", response.status, errorText);
-      
+
       if (response.status === 429) {
         return new Response(JSON.stringify({ error: "Muitas requisições. Tente novamente em alguns segundos." }), {
           status: 429,
@@ -78,7 +85,7 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      
+
       return new Response(JSON.stringify({ error: "Erro ao processar com IA" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -97,7 +104,6 @@ serve(async (req) => {
       });
     }
 
-    // Extract JSON from the response (handle markdown code blocks)
     let jsonStr = content.trim();
     if (jsonStr.startsWith("```")) {
       jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");

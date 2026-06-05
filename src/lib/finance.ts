@@ -1,5 +1,5 @@
 import { WeddingItem, Parcela } from "@/types/wedding";
-import { parseISO, isPast, differenceInDays, format, isWithinInterval, addDays, startOfDay } from "date-fns";
+import { parseISO, isPast, differenceInDays, format, addDays, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 export const fmtBRL = (v: number) =>
@@ -27,7 +27,7 @@ export const pendingParcelas = (items: WeddingItem[]) =>
 export const nextParcela = (items: WeddingItem[]) => {
   const today = startOfDay(new Date());
   return pendingParcelas(items)
-    .filter(p => p.dataVencimento)
+    .filter(p => p.dataVencimento && parseISO(p.dataVencimento) >= today)
     .sort((a, b) => a.dataVencimento.localeCompare(b.dataVencimento))[0];
 };
 
@@ -48,10 +48,15 @@ export const upcomingParcelas = (items: WeddingItem[], days = 7) => {
   });
 };
 
-export const monthlyExpense = (items: WeddingItem[]) => {
+export const monthlyExpense = (items: WeddingItem[], weddingDate?: string) => {
+  const today = startOfDay(new Date());
+  const cap = weddingDate ? parseISO(weddingDate) : null;
   const map: Record<string, number> = {};
   pendingParcelas(items).forEach(p => {
     if (!p.dataVencimento) return;
+    const d = parseISO(p.dataVencimento);
+    if (d < today) return;
+    if (cap && d > cap) return;
     const key = p.dataVencimento.substring(0, 7); // YYYY-MM
     map[key] = (map[key] || 0) + p.valor;
   });
