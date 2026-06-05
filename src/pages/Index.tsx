@@ -5,11 +5,12 @@ import { useWedding } from "@/contexts/WeddingContext";
 import ProgressRing from "@/components/ProgressRing";
 import StatCard from "@/components/StatCard";
 import { CATEGORIA_ICONS, STATUS_COLORS, STATUS_LABELS } from "@/types/wedding";
-import { differenceInDays, format, parseISO, isPast, startOfDay } from "date-fns";
+import { format, parseISO, isPast } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import InstallmentAlert from "@/components/InstallmentAlert";
 import MonthlyExpenseChart from "@/components/MonthlyExpenseChart";
 import { fmtBRL, totalFaltante, faltanteItem, nextParcela } from "@/lib/finance";
+import { daysUntil, formatBR } from "@/lib/date";
 
 const Dashboard = () => {
   const { items, config } = useWedding();
@@ -18,7 +19,7 @@ const Dashboard = () => {
     const totalGasto = items.reduce((s, i) => s + i.valorPago, 0);
     const totalPrevisto = items.reduce((s, i) => s + i.valorTotal, 0);
     const concluidos = items.filter(i => i.status === "concluido").length;
-    const daysLeft = differenceInDays(parseISO(config.dataCasamento), new Date());
+    const daysLeft = daysUntil(config.dataCasamento);
 
     const upcoming = items
       .filter(i => i.prazo && !isPast(parseISO(i.prazo)) && i.status !== "concluido")
@@ -27,12 +28,12 @@ const Dashboard = () => {
 
     const overdue = items.filter(i => i.prazo && isPast(parseISO(i.prazo)) && i.status !== "concluido");
     const progress = items.length > 0 ? (concluidos / items.length) * 100 : 0;
+    const financialPct = totalPrevisto > 0 ? (totalGasto / totalPrevisto) * 100 : 0;
     const itemsAberto = items.filter(i => faltanteItem(i) > 0).length;
     const nextP = nextParcela(items);
-    const nextPDays = nextP?.dataVencimento ? differenceInDays(parseISO(nextP.dataVencimento), startOfDay(new Date())) : null;
-    const nextPOverdue = nextPDays !== null && nextPDays < 0;
+    const nextPDays = nextP?.dataVencimento ? daysUntil(nextP.dataVencimento) : null;
 
-    return { totalGasto, totalPrevisto, concluidos, daysLeft, upcoming, overdue, progress, itemsAberto, nextP, nextPDays, nextPOverdue };
+    return { totalGasto, totalPrevisto, concluidos, daysLeft, upcoming, overdue, progress, financialPct, itemsAberto, nextP, nextPDays };
   }, [items, config]);
 
   return (
@@ -69,7 +70,7 @@ const Dashboard = () => {
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.2 }}
         >
-          <ProgressRing progress={stats.progress} />
+          <ProgressRing progress={stats.progress} secondaryProgress={stats.financialPct} />
         </motion.div>
 
         <div className="md:col-span-4 overflow-x-auto md:overflow-visible">
@@ -82,7 +83,7 @@ const Dashboard = () => {
                 icon={CalendarClock}
                 label="Próximo Prazo"
                 value={stats.upcoming[0]?.nome || "—"}
-                subtitle={stats.upcoming[0]?.prazo ? format(parseISO(stats.upcoming[0].prazo), "dd/MM/yyyy") : undefined}
+                subtitle={stats.upcoming[0]?.prazo ? formatBR(stats.upcoming[0].prazo) : undefined}
               />
             </div>
             <div className="w-44 md:w-auto shrink-0">
@@ -94,18 +95,20 @@ const Dashboard = () => {
               />
             </div>
             <div className="w-44 md:w-auto shrink-0">
-              <div className={`glass-card p-5 flex flex-col gap-3 ${stats.nextPOverdue ? "border-destructive/40 bg-destructive/5" : ""}`}>
+              <div className="glass-card p-5 flex flex-col gap-3">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Calendar size={16} />
                   <span className="text-xs font-body uppercase tracking-wider">Próxima Parcela</span>
                 </div>
-                <p className="font-accent text-2xl text-foreground">
-                  {stats.nextP ? fmtBRL(stats.nextP.valor) : "—"}
-                </p>
-                {stats.nextP && stats.nextPDays !== null && (
-                  <p className={`text-xs font-body ${stats.nextPOverdue ? "text-destructive" : "text-muted-foreground"}`}>
-                    {stats.nextPOverdue && "⚠️ "}{stats.nextP.itemNome} — {stats.nextPOverdue ? `venceu há ${Math.abs(stats.nextPDays)} dia(s)` : `vence em ${stats.nextPDays} dia(s)`}
-                  </p>
+                {stats.nextP ? (
+                  <>
+                    <p className="font-accent text-2xl text-foreground">{fmtBRL(stats.nextP.valor)}</p>
+                    <p className="text-xs font-body text-muted-foreground">
+                      {stats.nextP.itemNome} — vence em {stats.nextPDays} dia(s)
+                    </p>
+                  </>
+                ) : (
+                  <p className="font-body text-sm text-muted-foreground">Nenhuma parcela futura cadastrada</p>
                 )}
               </div>
             </div>
@@ -136,7 +139,7 @@ const Dashboard = () => {
               <div key={item.id} className="flex items-center justify-between text-sm font-body">
                 <span className="text-foreground">{CATEGORIA_ICONS[item.categoria]} {item.nome}</span>
                 <span className="text-destructive text-xs">
-                  Venceu em {format(parseISO(item.prazo!), "dd/MM/yyyy")}
+                  Venceu em {formatBR(item.prazo!)}
                 </span>
               </div>
             ))}
@@ -173,7 +176,7 @@ const Dashboard = () => {
                     {format(parseISO(item.prazo!), "dd MMM", { locale: ptBR })}
                   </p>
                   <p className="text-[10px] text-muted-foreground font-body">
-                    {differenceInDays(parseISO(item.prazo!), new Date())} dias
+                    {daysUntil(item.prazo!)} dias
                   </p>
                 </div>
               </motion.div>
