@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Check, Loader2 } from "lucide-react";
 import { WeddingItem, CATEGORIAS, Categoria, Status, Prioridade, STATUS_LABELS, PRIORIDADE_LABELS } from "@/types/wedding";
 import { useWedding } from "@/contexts/WeddingContext";
-import { useToast } from "@/hooks/use-toast";
+import { useAutosave } from "@/hooks/useAutosave";
 
 interface Props {
   item: WeddingItem | null;
@@ -16,7 +17,6 @@ interface Props {
 
 const EditItemDialog = ({ item, open, onOpenChange }: Props) => {
   const { updateItem } = useWedding();
-  const { toast } = useToast();
   const [form, setForm] = useState({
     nome: "",
     categoria: "Outros" as Categoria,
@@ -45,22 +45,20 @@ const EditItemDialog = ({ item, open, onOpenChange }: Props) => {
     }
   }, [item]);
 
-  const handleSave = () => {
-    if (!item) return;
+  const status = useAutosave(form, (f) => {
+    if (!item || !open) return;
     updateItem(item.id, {
-      nome: form.nome,
-      categoria: form.categoria,
-      fornecedor: form.fornecedor || null,
-      valorTotal: form.valorTotal,
-      valorPago: form.valorPago,
-      prazo: form.prazo || null,
-      status: form.status,
-      prioridade: form.prioridade,
-      notas: form.notas || null,
+      nome: f.nome,
+      categoria: f.categoria,
+      fornecedor: f.fornecedor || null,
+      valorTotal: f.valorTotal,
+      valorPago: f.valorPago,
+      prazo: f.prazo || null,
+      status: f.status,
+      prioridade: f.prioridade,
+      notas: f.notas || null,
     });
-    toast({ title: "Item atualizado", description: `"${form.nome}" foi salvo.` });
-    onOpenChange(false);
-  };
+  }, 700);
 
   const selectClass = "w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm font-body text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
 
@@ -68,7 +66,13 @@ const EditItemDialog = ({ item, open, onOpenChange }: Props) => {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="font-heading text-xl">Editar Item</DialogTitle>
+          <div className="flex items-center justify-between gap-3">
+            <DialogTitle className="font-heading text-xl">Editar Item</DialogTitle>
+            <div className="text-xs font-body text-muted-foreground flex items-center gap-1.5 min-h-[20px]">
+              {status === "saving" && (<><Loader2 size={12} className="animate-spin" /> Salvando…</>)}
+              {status === "saved" && (<><Check size={12} className="text-emerald-500" /> Salvo</>)}
+            </div>
+          </div>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div>
@@ -125,8 +129,7 @@ const EditItemDialog = ({ item, open, onOpenChange }: Props) => {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={handleSave}>Salvar</Button>
+          <Button onClick={() => onOpenChange(false)}>Fechar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

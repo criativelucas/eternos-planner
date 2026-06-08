@@ -1,19 +1,37 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { useWedding } from "@/contexts/WeddingContext";
 import { CATEGORIA_ICONS } from "@/types/wedding";
 import { fmtBRL, faltanteItem, totalFaltante } from "@/lib/finance";
-import { format, parseISO } from "date-fns";
+import { formatBR } from "@/lib/date";
+import { checkAllItems } from "@/lib/validateItem";
 import MonthlyExpenseChart from "./MonthlyExpenseChart";
 
 const FinancialClosingPanel = () => {
   const { items } = useWedding();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const pendentes = items.filter(i => faltanteItem(i) > 0);
+  const inconsistencies = checkAllItems(items);
 
   return (
     <div className="space-y-6">
       <h2 className="font-heading text-2xl text-foreground">Resumo Financeiro Completo</h2>
+
+      {inconsistencies.length > 0 && (
+        <div className="rounded-xl border border-amber-400/40 bg-amber-100/80 dark:bg-amber-500/10 p-4 text-amber-900 dark:text-amber-200 space-y-2">
+          <p className="text-sm font-body flex items-center gap-2 font-medium">
+            <AlertTriangle size={14} />
+            {inconsistencies.length} inconsistência{inconsistencies.length > 1 ? "s" : ""} detectada{inconsistencies.length > 1 ? "s" : ""}
+          </p>
+          <ul className="text-xs font-body space-y-1 pl-6 list-disc">
+            {inconsistencies.slice(0, 8).map((iss, idx) => (
+              <li key={idx}><strong>{iss.itemNome}</strong>: {iss.message}</li>
+            ))}
+          </ul>
+          <p className="text-xs font-body opacity-80">Edite o item afetado para ajustar os valores ou parcelas.</p>
+        </div>
+      )}
+
 
       {/* A) Faltante por item */}
       <div className="glass-card p-6 space-y-4">
@@ -87,7 +105,7 @@ const FinancialClosingPanel = () => {
                           <tr key={p.numero} className="border-t border-border/50">
                             <td className="py-1.5 text-foreground">{p.numero}</td>
                             <td className="text-foreground">{fmtBRL(p.valor)}</td>
-                            <td className="text-foreground">{p.dataVencimento ? format(parseISO(p.dataVencimento), "dd/MM/yyyy") : "—"}</td>
+                            <td className="text-foreground">{p.dataVencimento ? formatBR(p.dataVencimento) : "—"}</td>
                             <td className="text-right">{p.pago ? "✅ Pago" : "⏳ Pendente"}</td>
                           </tr>
                         ))}
