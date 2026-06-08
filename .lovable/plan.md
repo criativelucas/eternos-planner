@@ -1,61 +1,73 @@
-## Bug-fix pass: dates, calculations, AI prompt
+## Diagnóstico (o que encontrei no seu banco)
 
-### 1. AI date generation (Bug #1)
-**`supabase/functions/parse-wedding-input/index.ts`**
-- Convert `SYSTEM_PROMPT` from a const to a function `buildSystemPrompt(today, weddingDate)` that interpolates the values at call time.
-- Inside `serve(...)` compute `const today = new Date().toISOString().split('T')[0]` and read `weddingDate` (default `"2026-08-29"`; will accept from body if frontend passes it later).
-- Prepend the CONTEXTO IMPORTANTE block exactly as specified.
-- **`src/components/AICommandBar.tsx`**: pass `weddingDate: config.dataCasamento` in the invoke body so the edge function uses the real wedding date when available.
+Verifiquei seus itens reais no banco e identifiquei 3 grupos de problemas:
 
-### 2. One-time data migration (Bug #2)
-New file **`src/lib/fixWrongDates.ts`** exporting `fixWrongDates(configId)`:
-- Guard: `if (localStorage.getItem('datesFixed_v2')) return;`
-- Fetch all `wedding_items` for the given `config_id`.
-- For each item, walk `parcelas`; for any unpaid parcela whose `dataVencimento < today`, recompute: keep original day-of-month, shift to 2026, starting from `today.month + 1` and incrementing one month per corrected parcela in order. Cap at 2026-08-29 (clamp month if exceeded).
-- Skip parcelas with `pago === true`.
-- Persist via `supabase.from('wedding_items').update({ parcelas }).eq('id', item.id)` only for changed items.
-- Set `localStorage.setItem('datesFixed_v2', 'true')` and `console.log("Migration complete: X parcelas corrected across Y items")`.
+### 1. Datas antigas ainda existem
+A migração anterior (`datesFixed_v2`) só corrige parcelas **não pagas**. Parcelas marcadas como "pagas" ficaram com data de **27/10/2023** (ex.: Bem-casados, Buffet, Local do Evento, Montagem do altar). Isso bagunça gráficos, histórico e o "primeiro pagamento".
 
-Wire into **`src/contexts/WeddingContext.tsx`** `fetchData` right after `configId` is resolved, then call `refetch` once if anything changed.
+Além disso o item **"Local"** ainda tem parcela 2 não paga em **22/06/2024** — sinal de que a migração rodou antes desse item existir e o flag de `localStorage` impediu nova execução.
 
-### 3. Next installment filter (Bug #3)
-**`src/lib/finance.ts`** — update `nextParcela()`:
-- Filter `!p.pago && parseISO(p.dataVencimento) >= startOfDay(new Date())`.
-- Sort ascending, take first.
-**`src/pages/Index.tsx`** — when `stats.nextP` is null, render "Nenhuma parcela futura cadastrada"; remove the overdue branch (no more negative days). The `nextPOverdue` styling/logic is deleted.
+### 2. Inconsistências entre valor total, valor pago e parcelas
+| Item | Valor Total | Soma Parcelas | Valor Pago | Problema |
+|---|---|---|---|---|
+| Pastor da Cerimônia | R$ 500 | R$ 900 | R$ 0 | Parcela maior que o total |
+| Mesas para o evento | R$ 572,50 | R$ 400 | R$ 360 | Parcela menor que o total |
+| Caixa dos padrinhos | R$ 250 | R$ 250 | R$ 150 | Pago > 0 mas parcela única não marcada |
+| Fotógrafo | R$ 1.400 | R$ 1.400 | R$ 699 | 5 parcelas empilhadas em 25/08/2026 |
 
-### 4. Overdue alert sanity check (Bug #4)
-**`src/components/InstallmentAlert.tsx`**:
-- Compute `totalParcelas = allParcelas(items).length` and `overdueCount = overdue.length`.
-- If `totalParcelas > 0 && overdueCount / totalParcelas > 0.5`, render a single warning: "⚠️ Detectamos possíveis datas incorretas. Verifique seus prazos."
-- Otherwise, also filter the displayed overdue list to only those whose `dataVencimento` is within the last 90 days (`differenceInDays(today, d) <= 90`).
+### 3. Salvamento — está OK, mas pouco claro
+- **AICommandBar** e toggle de status: salvam direto no banco ✅
+- **EditItemDialog**: só salva ao clicar "Salvar" (não é autosave)
+- Nenhum feedback visual de "salvando..." → você não sabe se foi gravado
 
-### 5. Monthly chart window (Bug #5)
-**`src/lib/finance.ts`** — `monthlyExpense()` accepts an optional `weddingDate` and filters parcelas to `!p.pago && d >= today && d <= weddingDate`.
-**`src/components/MonthlyExpenseChart.tsx`** — pass `config.dataCasamento` (via `useWedding`) to `monthlyExpense`; show empty state "Adicione prazos aos seus itens para ver a previsão mensal" when there is no data (compact mode included).
+---
 
-### 6. Percentage / dual ring (Bug #6)
-**`src/components/ProgressRing.tsx`** — extend to accept optional `secondaryProgress` and `secondaryLabel`:
-- Render a second concentric circle inside the existing one (smaller radius, same stroke width, muted color track + accent stroke).
-- Center label becomes `"{primary}% concluído"` on top line and `"{secondary}% pago"` below.
-**`src/pages/Index.tsx`** — compute `financialPct` from `totalGasto / totalPrevisto` and pass both to `<ProgressRing progress={stats.progress} secondaryProgress={financialPct} />`.
+## Plano de correção
 
-### 7. Timeline filter & Histórico section (Bug #7)
-**`src/pages/Timeline.tsx`**:
-- Split events into `future` (date >= today OR not done/paid items that are still relevant going forward) and `historico` (`done === true` OR date < today AND paid/concluded).
-- Render future grouped by month (existing UI), expanded.
-- Render a single collapsible "Histórico" section at the bottom (using existing `Accordion` from `@/components/ui/accordion`), collapsed by default, containing past paid/concluded events styled green with ✅.
-- Keep the wedding day pinned event as-is.
+### Passo 1 — Migração de datas v3 (definitiva)
+Criar `src/lib/fixWrongDates.ts` v3 (flag `datesFixed_v3`) que:
+- Reexecuta para **todos os usuários** (novo flag)
+- Corrige parcelas **pagas E não pagas** com data anterior a **01/01/2025**
+- Para parcelas pagas antigas: mantém o dia, move para o mês atual de 2025/2026 mais coerente com a ordem da parcela
+- Para parcelas não pagas antigas: distribui mês a mês a partir do próximo mês, sem ultrapassar 29/08/2026
+- Evita empilhar várias parcelas no mesmo dia (espalha em meses sequenciais)
 
-### 8. Global date helpers (Bug #8)
-New file **`src/lib/date.ts`** exporting `formatBR(dateStr)` and `daysUntil(dateStr)` exactly per spec (anchored at noon to avoid TZ shift).
+### Passo 2 — Validador automático de consistência
+Criar `src/lib/validateItem.ts` chamado dentro de `WeddingContext.fetchData`:
+- Se `soma(parcelas) ≠ valorTotal`: re-balanceia automaticamente proporcionalmente OU mostra aviso
+- Se `valorPago > 0` mas nenhuma parcela `pago=true`: marca as parcelas mais antigas como pagas até bater
+- Se `valorPago` diverge da soma das parcelas pagas: recalcula `valorPago` a partir das parcelas (fonte da verdade)
+- Aplica correção silenciosa e mostra um toast "Corrigi N itens com dados inconsistentes"
 
-Replace usages:
-- `src/pages/Index.tsx`: `differenceInDays(parseISO(config.dataCasamento), new Date())` → `daysUntil(config.dataCasamento)`; all `format(parseISO(...), "dd/MM/yyyy")` → `formatBR(...)` (keep `"dd 'de' MMMM, yyyy"` long-form intact since spec only targets the plain numeric format).
-- `src/pages/Timeline.tsx`: `format(parseISO(ev.date), "dd/MM/yyyy")` → `formatBR(ev.date)`.
-- `src/components/InstallmentAlert.tsx`: replace the inline `differenceInDays(parseISO(...), startOfDay(new Date()))` with `daysUntil(p.dataVencimento)`.
+### Passo 3 — Tornar salvamento visível
+Em `EditItemDialog.tsx` e nos toggles de parcela/status:
+- Substituir botão "Salvar" por **autosave com debounce de 600ms** ao mudar campos
+- Mostrar indicador discreto no canto do diálogo: `⋯ Salvando` → `✓ Salvo` → desaparece após 1.5s
+- Mantém botão "Fechar" em vez de "Salvar/Cancelar"
+- Aplicar mesmo indicador no rodapé da página de Itens quando um toggle inline grava
 
-No UI design, layout, or copy changes beyond the strings explicitly specified above.
+### Passo 4 — Página "Revisão" rápida (opcional, dentro de Finanças)
+Adicionar card "Itens com dados inconsistentes" no `FinancialClosingPanel`:
+- Lista itens onde soma de parcelas ≠ valor total
+- Botão "Corrigir automaticamente" por linha
+- Some quando tudo estiver consistente
 
-### Out of scope (not touched)
-Items page, Finances page panels other than what `monthlyExpense` already feeds, achievements, edge function for `ai-suggestions`, auth, RLS — none of these have date-bug code paths beyond the helpers above.
+### Passo 5 — Reforçar prompt da IA
+Em `parse-wedding-input/index.ts` adicionar regras:
+- "A soma das parcelas DEVE ser exatamente igual a valorTotal"
+- "Não empilhe parcelas no mesmo mês — distribua mensalmente"
+- "Se valorPago > 0, marque as primeiras parcelas como pago=true até totalizar valorPago"
+
+---
+
+## Detalhes técnicos
+- **Arquivos novos**: `src/lib/fixWrongDates.ts` (v3, sobrescreve), `src/lib/validateItem.ts`, `src/hooks/useAutosave.ts`
+- **Editados**: `WeddingContext.tsx`, `EditItemDialog.tsx`, `FinancialClosingPanel.tsx`, `Items.tsx` (toggle indicator), `supabase/functions/parse-wedding-input/index.ts`
+- **Sem mudanças de schema** no banco — tudo é correção de dados em runtime + lógica de UI
+- **Sem mudanças visuais** além do indicador "Salvando/Salvo"
+
+## Pergunta antes de implementar
+Os valores divergentes (ex.: Pastor R$500 vs parcela R$900) — você quer que eu:
+**(A)** ajuste automaticamente o `valorTotal` para bater com a soma das parcelas, **(B)** ajuste as parcelas proporcionalmente para bater com o `valorTotal`, ou **(C)** apenas mostre o aviso e deixe você corrigir manualmente?
+
+Vou aguardar sua resposta antes de implementar — ou se preferir, escolho **(C)** como padrão seguro.

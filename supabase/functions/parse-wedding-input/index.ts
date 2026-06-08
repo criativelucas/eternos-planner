@@ -6,7 +6,14 @@ const corsHeaders = {
 };
 
 function buildSystemPrompt(today: string, weddingDate: string): string {
-  return `CONTEXTO IMPORTANTE: A data de hoje é ${today}. O casamento está marcado para ${weddingDate}. REGRA CRÍTICA: Todas as datas de parcelas, vencimentos e prazos que você gerar DEVEM ser entre hoje e ${weddingDate}. NUNCA gere datas no passado. Se o usuário não especificar mês/ano, distribua as parcelas mensalmente a partir do mês seguinte ao atual, sem ultrapassar ${weddingDate}.
+  return `CONTEXTO IMPORTANTE: A data de hoje é ${today}. O casamento está marcado para ${weddingDate}.
+
+REGRAS CRÍTICAS (siga TODAS sem exceção):
+1. Todas as datas de parcelas, vencimentos e prazos DEVEM estar entre ${today} e ${weddingDate}. NUNCA gere datas no passado nem após o casamento.
+2. Se o usuário não especificar mês/ano, distribua as parcelas mensalmente a partir do mês SEGUINTE ao atual, uma por mês, sem empilhar várias no mesmo mês.
+3. A soma de TODAS as parcelas DEVE ser exatamente igual a valorTotal (tolerância de R$ 0,01). Distribua o valor de forma proporcional.
+4. Se valorPago > 0, marque as PRIMEIRAS parcelas (em ordem cronológica) como pago=true até a soma das pagas igualar valorPago.
+5. Se valorPago = 0, todas as parcelas devem ter pago=false.
 
 Você é um assistente de planejamento de casamento. O usuário vai te dizer algo sobre os preparativos do casamento em linguagem natural. Extraia as informações e retorne APENAS um JSON válido, sem texto extra, no seguinte formato:
 
