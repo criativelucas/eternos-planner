@@ -8,6 +8,7 @@ const ResetPassword = () => {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
+  const [expired, setExpired] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -23,7 +24,9 @@ const ResetPassword = () => {
         setReady(true);
       }
     });
-    return () => subscription.unsubscribe();
+    supabase.auth.getSession().then(({ data: { session } }) => { if (session) setReady(true); });
+    const t = window.setTimeout(() => setExpired(true), 6000);
+    return () => { subscription.unsubscribe(); window.clearTimeout(t); };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,7 +48,16 @@ const ResetPassword = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="glass-card p-8 text-center space-y-4 animate-fade-in">
-          <p className="text-muted-foreground font-body">Verificando link de recuperação...</p>
+          {expired ? (
+            <>
+              <p className="text-muted-foreground font-body">Este link é inválido ou expirou.</p>
+              <button onClick={() => navigate("/forgot-password")} className="gradient-rose text-primary-foreground font-body font-medium px-6 py-2.5 rounded-lg text-sm">
+                Pedir novo link
+              </button>
+            </>
+          ) : (
+            <p className="text-muted-foreground font-body">Verificando link de recuperação...</p>
+          )}
         </div>
       </div>
     );

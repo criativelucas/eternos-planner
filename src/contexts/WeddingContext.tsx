@@ -3,17 +3,17 @@ import { WeddingItem, WeddingConfig, Parcela } from "@/types/wedding";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { fixWrongDates } from "@/lib/fixWrongDates";
 
 interface WeddingContextType {
   items: WeddingItem[];
   config: WeddingConfig;
   configId: string | null;
   loading: boolean;
-  addItem: (item: WeddingItem) => void;
-  updateItem: (id: string, updates: Partial<WeddingItem>) => void;
-  deleteItem: (id: string) => void;
-  updateConfig: (updates: Partial<WeddingConfig>) => void;
+  loadError: boolean;
+  addItem: (item: WeddingItem) => Promise<boolean>;
+  updateItem: (id: string, updates: Partial<WeddingItem>) => Promise<boolean>;
+  deleteItem: (id: string) => Promise<boolean>;
+  updateConfig: (updates: Partial<WeddingConfig>) => Promise<boolean>;
   refetch: () => void;
 }
 
@@ -52,28 +52,32 @@ export const WeddingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   });
   const [configId, setConfigId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  // Serialize writes per item so an older request can't overwrite a newer edit.
+  const writeQueue = React.useRef<Map<string, Promise<unknown>>>(new Map());
   const { user } = useAuth();
   const { toast } = useToast();
 
   const fetchData = useCallback(async () => {
     if (!user) return;
     setLoading(true);
+    setLoadError(false);
     try {
       // First try to accept any pending invite
       await supabase.rpc("accept_couple_invite", { _user_id: user.id });
 
       // Get user's config id
-      const { data: cfgId } = await supabase.rpc("get_user_config_id", { _user_id: user.id });
+      const { data: cfgId, error: cfgErr } = await supabase.rpc("get_user_config_id", { _user_id: user.id });
+      if (cfgErr) throw cfgErr;
 
       if (cfgId) {
-        // One-time migration: fix legacy parcela dates that landed in the past.
-        await fixWrongDates(cfgId);
-
         const [configRes, itemsRes] = await Promise.all([
           supabase.from("wedding_config").select("*").eq("id", cfgId).single(),
           supabase.from("wedding_items").select("*").eq("config_id", cfgId).order("created_at", { ascending: false }),
         ]);
 
+        if (configRes.error) throw configRes.error;
+        if (itemsRes.error) throw itemsRes.error;
         if (configRes.data) {
           setConfig(dbToConfig(configRes.data));
           setConfigId(configRes.data.id);
@@ -98,14 +102,19 @@ export const WeddingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     } catch (e) {
       console.error("Error fetching data:", e);
+      setLoadError(true);
+      toast({ title: "Não foi possível carregar seus dados", description: "Verifique a conexão e recarregue a página.", variant: "destructive" });
     }
     setLoading(false);
-  }, [user]);
+  }, [user, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const addItem = useCallback(async (item: WeddingItem) => {
-    if (!configId) return;
+    if (!configId) {
+      toast({ title: "Erro ao salvar", description: "Seus dados ainda estão carregando. Tente de novo.", variant: "destructive" });
+      return false;
+    }
     setItems(prev => [item, ...prev]);
 
     const { error } = await supabase.from("wedding_items").insert({
@@ -127,7 +136,9 @@ export const WeddingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.error("Error adding item:", error);
       toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
       setItems(prev => prev.filter(i => i.id !== item.id));
+      return false;
     }
+    return true;
   }, [configId, toast]);
 
   const updateItem = useCallback(async (id: string, updates: Partial<WeddingItem>) => {
@@ -145,12 +156,17 @@ export const WeddingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (updates.prioridade !== undefined) dbUpdates.prioridade = updates.prioridade;
     if (updates.notas !== undefined) dbUpdates.notas = updates.notas;
 
-    const { error } = await supabase.from("wedding_items").update(dbUpdates).eq("id", id);
+    const prev = writeQueue.current.get(id) || Promise.resolve();
+    const job = prev.then(() => supabase.from("wedding_items").update(dbUpdates).eq("id", id));
+    writeQueue.current.set(id, job.catch(() => {}));
+    const { error } = await job;
     if (error) {
       console.error("Error updating item:", error);
       toast({ title: "Erro ao atualizar", description: error.message, variant: "destructive" });
       fetchData();
+      return false;
     }
+    return true;
   }, [toast, fetchData]);
 
   const deleteItem = useCallback(async (id: string) => {
@@ -161,13 +177,17 @@ export const WeddingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.error("Error deleting item:", error);
       toast({ title: "Erro ao remover", description: error.message, variant: "destructive" });
       fetchData();
+      return false;
     }
+    return true;
   }, [toast, fetchData]);
 
   const updateConfig = useCallback(async (updates: Partial<WeddingConfig>) => {
+    if (!configId) {
+      toast({ title: "Erro ao salvar", description: "Seus dados ainda estão carregando. Tente de novo.", variant: "destructive" });
+      return false;
+    }
     setConfig(prev => ({ ...prev, ...updates }));
-
-    if (!configId) return;
 
     const dbUpdates: any = {};
     if (updates.nomeNoiva !== undefined) dbUpdates.nome_noiva = updates.nomeNoiva;
@@ -179,11 +199,14 @@ export const WeddingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (error) {
       console.error("Error updating config:", error);
       toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
+      fetchData();
+      return false;
     }
-  }, [configId, toast]);
+    return true;
+  }, [configId, toast, fetchData]);
 
   return (
-    <WeddingContext.Provider value={{ items, config, configId, loading, addItem, updateItem, deleteItem, updateConfig, refetch: fetchData }}>
+    <WeddingContext.Provider value={{ items, config, configId, loading, loadError, addItem, updateItem, deleteItem, updateConfig, refetch: fetchData }}>
       {children}
     </WeddingContext.Provider>
   );

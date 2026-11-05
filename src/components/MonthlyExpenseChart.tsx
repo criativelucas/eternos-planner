@@ -24,7 +24,7 @@ const MonthlyExpenseChart = ({ compact = false, monthsWindow }: Props) => {
   if (data.length === 0) {
     return (
       <div className={compact ? "py-4 text-center text-xs text-muted-foreground font-body" : "glass-card p-6 text-center text-sm text-muted-foreground font-body"}>
-        Adicione prazos aos seus itens para ver a previsão mensal
+        Nenhuma parcela a vencer até o casamento
       </div>
     );
   }

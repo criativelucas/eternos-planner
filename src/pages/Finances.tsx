@@ -1,3 +1,4 @@
+import { totalFaltante, isOverdueDate } from "@/lib/finance";
 import { useMemo } from "react";
 import { useWedding } from "@/contexts/WeddingContext";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
@@ -19,7 +20,7 @@ const Finances = () => {
   const data = useMemo(() => {
     const totalGasto = items.reduce((s, i) => s + i.valorPago, 0);
     const totalPrevisto = items.reduce((s, i) => s + i.valorTotal, 0);
-    const restante = totalPrevisto - totalGasto;
+    const restante = totalFaltante(items);
     const budgetPct = config.orcamentoTotal > 0 ? (totalGasto / config.orcamentoTotal) * 100 : 0;
 
     const byCategory = items.reduce<Record<string, number>>((acc, i) => {
@@ -32,7 +33,7 @@ const Finances = () => {
     // Upcoming installments
     const parcelas = items.flatMap(item =>
       item.parcelas
-        .filter(p => !p.pago)
+        .filter(p => !p.pago && p.dataVencimento && !isOverdueDate(p.dataVencimento))
         .map(p => ({ ...p, itemNome: item.nome, categoria: item.categoria }))
     ).sort((a, b) => a.dataVencimento.localeCompare(b.dataVencimento));
 
@@ -83,7 +84,7 @@ const Finances = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Donut Chart */}
         <div className="glass-card p-6">
-          <h2 className="font-heading text-lg text-foreground mb-4">Gastos por Categoria</h2>
+          <h2 className="font-heading text-lg text-foreground mb-4">Planejado por Categoria</h2>
           {data.chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={250}>
               <PieChart>

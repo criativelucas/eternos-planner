@@ -9,7 +9,7 @@ import { format, parseISO, isPast } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import InstallmentAlert from "@/components/InstallmentAlert";
 import MonthlyExpenseChart from "@/components/MonthlyExpenseChart";
-import { fmtBRL, totalFaltante, faltanteItem, nextParcela } from "@/lib/finance";
+import { fmtBRL, totalFaltante, faltanteItem, nextParcela , isOverdueDate } from "@/lib/finance";
 import { daysUntil, formatBR } from "@/lib/date";
 
 const Dashboard = () => {
@@ -22,11 +22,11 @@ const Dashboard = () => {
     const daysLeft = daysUntil(config.dataCasamento);
 
     const upcoming = items
-      .filter(i => i.prazo && !isPast(parseISO(i.prazo)) && i.status !== "concluido")
+      .filter(i => i.prazo && !isOverdueDate(i.prazo) && i.status !== "concluido")
       .sort((a, b) => a.prazo!.localeCompare(b.prazo!))
       .slice(0, 5);
 
-    const overdue = items.filter(i => i.prazo && isPast(parseISO(i.prazo)) && i.status !== "concluido");
+    const overdue = items.filter(i => i.prazo && isOverdueDate(i.prazo) && i.status !== "concluido");
     const progress = items.length > 0 ? (concluidos / items.length) * 100 : 0;
     const financialPct = totalPrevisto > 0 ? (totalGasto / totalPrevisto) * 100 : 0;
     const itemsAberto = items.filter(i => faltanteItem(i) > 0).length;
@@ -34,7 +34,7 @@ const Dashboard = () => {
     const nextPDays = nextP?.dataVencimento ? daysUntil(nextP.dataVencimento) : null;
 
     return { totalGasto, totalPrevisto, concluidos, daysLeft, upcoming, overdue, progress, financialPct, itemsAberto, nextP, nextPDays };
-  }, [items, config]);
+  }, [items, config, new Date().toDateString()]);
 
   return (
     <div className="space-y-8 animate-fade-in">

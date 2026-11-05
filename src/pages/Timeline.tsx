@@ -29,7 +29,7 @@ const Timeline = () => {
 
     items.filter(i => i.prazo).forEach(i => {
       const done = i.status === "concluido";
-      const overdue = isPast(parseISO(i.prazo!)) && !done;
+      const overdue = parseISO(i.prazo!) < today && !done;
       const days = differenceInDays(parseISO(i.prazo!), today);
       let color = "#6B7280";
       if (done) color = "#10B981";
@@ -67,10 +67,9 @@ const Timeline = () => {
     const past: TimelineEvent[] = [];
     events.forEach(ev => {
       const d = parseISO(ev.date);
-      if (d >= today && !ev.done) future.push(ev);
-      else if (ev.done) past.push(ev);
-      else if (d >= today) future.push(ev);
-      else past.push(ev); // overdue & not done → historic (also avoids cluttering future)
+      // Done items go to history; anything still open (including overdue) stays visible.
+      if (ev.done && d < today) past.push(ev);
+      else future.push(ev);
     });
 
     const futureGroups: Record<string, TimelineEvent[]> = {};
@@ -80,7 +79,7 @@ const Timeline = () => {
       futureGroups[key].push(ev);
     });
     return { futureGroups, historico: past };
-  }, [items]);
+  }, [items, new Date().toDateString()]);
 
   const months = Object.keys(futureGroups);
 

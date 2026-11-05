@@ -68,22 +68,24 @@ serve(async (req) => {
       });
     }
 
-    // Save invite record
-    const { error: insertError } = await supabaseAdmin.from("couple_invites").insert({
-      config_id: configId,
-      invite_email: partnerEmail,
-      invited_by: userId,
-    });
-
-    if (insertError) {
-      console.error("Insert error:", insertError);
-      // If duplicate, still proceed (maybe email wasn't sent before)
-      if (!insertError.message.includes("duplicate")) {
+    // Reuse an existing pending invite for this email instead of creating duplicates
+    const { data: existingInv } = await supabaseAdmin.from("couple_invites")
+      .select("id").eq("config_id", configId).ilike("invite_email", partnerEmail).eq("accepted", false).limit(1);
+    let createdInviteId: string | null = null;
+    if (!existingInv || existingInv.length === 0) {
+      const { data: ins, error: insertError } = await supabaseAdmin.from("couple_invites").insert({
+        config_id: configId,
+        invite_email: partnerEmail,
+        invited_by: userId,
+      }).select("id").single();
+      if (insertError) {
+        console.error("Insert error:", insertError);
         return new Response(JSON.stringify({ error: insertError.message }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      createdInviteId = ins.id;
     }
 
     // Send real invite email via Supabase Admin
@@ -96,6 +98,7 @@ serve(async (req) => {
 
     if (inviteError) {
       console.error("Invite error:", inviteError);
+      if (createdInviteId) await supabaseAdmin.from("couple_invites").delete().eq("id", createdInviteId);
       return new Response(JSON.stringify({ error: `Erro ao enviar convite: ${inviteError.message}` }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

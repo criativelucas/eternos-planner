@@ -20,11 +20,6 @@ const AcceptInvite = () => {
         setHasSession(true);
         setCheckingSession(false);
 
-        // If this is an existing user who already has a password, just accept and redirect
-        if (event === "SIGNED_IN") {
-          await acceptInvite(session.user.id);
-          navigate("/", { replace: true });
-        }
       } else {
         setCheckingSession(false);
       }
@@ -41,12 +36,16 @@ const AcceptInvite = () => {
   }, []);
 
   const acceptInvite = async (userId: string) => {
-    try {
-      await supabase.rpc("accept_couple_invite", { _user_id: userId });
-      toast({ title: "Convite aceito! 💍", description: "Agora vocês podem planejar juntos!" });
-    } catch (err) {
-      console.error("Error accepting invite:", err);
+    const { error } = await supabase.rpc("accept_couple_invite", { _user_id: userId });
+    if (error) {
+      toast({ title: "Não foi possível aceitar o convite", description: error.message, variant: "destructive" });
+      return false;
     }
+    const { data: cfg } = await supabase.rpc("get_user_config_id", { _user_id: userId });
+    toast(cfg
+      ? { title: "Convite aceito! 💍", description: "Agora vocês podem planejar juntos!" }
+      : { title: "Nenhum convite encontrado", description: "Peça um novo convite ao seu parceiro(a).", variant: "destructive" });
+    return true;
   };
 
   const handleSetPassword = async (e: React.FormEvent) => {
@@ -68,8 +67,6 @@ const AcceptInvite = () => {
     if (data.user) {
       await acceptInvite(data.user.id);
     }
-
-    toast({ title: "Conta configurada! ✨" });
     navigate("/", { replace: true });
     setLoading(false);
   };
@@ -144,6 +141,16 @@ const AcceptInvite = () => {
             className="w-full gradient-rose text-primary-foreground font-body font-medium py-3 rounded-lg disabled:opacity-50 transition-opacity"
           >
             {loading ? "Configurando..." : "Entrar no Planejamento 💍"}
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session) { await acceptInvite(session.user.id); navigate("/", { replace: true }); }
+            }}
+            className="w-full text-xs text-muted-foreground font-body hover:underline"
+          >
+            Já tenho senha — entrar sem trocar
           </button>
         </form>
       </div>
