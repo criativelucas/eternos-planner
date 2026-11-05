@@ -49,8 +49,6 @@ const ConfigPage = () => {
 
       if (error || data?.error) {
         toast({ title: "Erro ao convidar", description: data?.error || error?.message, variant: "destructive" });
-      } else if (false) {
-        toast({ title: "Erro ao convidar", description: error.message, variant: "destructive" });
       } else {
         toast({ title: "Convite enviado! 💍", description: `Um email foi enviado para ${inviteEmail} com o link de acesso.` });
         setInvites(prev => prev.some(p => p.invite_email.toLowerCase() === inviteEmail.toLowerCase()) ? prev : [...prev, { id: crypto.randomUUID(), invite_email: inviteEmail, accepted: false }]);
@@ -177,9 +175,10 @@ const ConfigPage = () => {
 
         <button
           onClick={handleSave}
-          className="w-full gradient-rose text-primary-foreground font-body font-medium py-3 rounded-lg flex items-center justify-center gap-2"
+          disabled={loading || saving || !configId}
+          className="w-full gradient-rose text-primary-foreground font-body font-medium py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
         >
-          <Save size={16} /> Salvar Configurações
+          <Save size={16} /> {loading ? "Carregando…" : saving ? "Salvando…" : "Salvar Configurações"}
         </button>
       </div>
 
