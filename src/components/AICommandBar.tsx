@@ -8,13 +8,11 @@ import { supabase } from "@/integrations/supabase/client";
 
 const PLACEHOLDERS = [
   'Contratei o fotógrafo por R$4.500, dei entrada de R$1.500...',
-  'Paguei a 2ª parcela do buffet de R$800',
   'O vestido ficou para maio, custa R$3.200',
   'Reservei o DJ por R$2.000, 4x de R$500',
   'Comprei os convites por R$800, já paguei tudo',
-  'Paguei a 3ª parcela do fotógrafo de R$400',
   'Falta pagar R$600 do DJ, vence dia 10/07',
-  'Já quitamos os convites',
+  'Buffet por R$12.000 em 6x, já paguei 2 parcelas',
   'Ainda não contratei maquiagem e hair, quero reservar R$800',
 ];
 
@@ -55,10 +53,6 @@ const AICommandBar = () => {
   const handleSubmit = async () => {
     if (!input.trim()) return;
     setLoading(true);
-    try {
-      const c = Number(localStorage.getItem("aiUsageCount") || "0") + 1;
-      localStorage.setItem("aiUsageCount", String(c));
-    } catch {}
 
 
     try {
@@ -74,6 +68,10 @@ const AICommandBar = () => {
         return;
       }
 
+      try {
+        const c = Number(localStorage.getItem("aiUsageCount") || "0") + 1;
+        localStorage.setItem("aiUsageCount", String(c));
+      } catch {}
       const item = data?.item || data;
       setPreview({
         nome: item.nome || "Novo Item",
@@ -99,7 +97,10 @@ const AICommandBar = () => {
     setLoading(false);
   };
 
-  const handleConfirm = () => {
+  const norm = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  const existing = preview ? items.find(i => norm(i.nome) === norm(preview.nome || "")) : undefined;
+
+  const handleConfirm = async () => {
     if (!preview) return;
     const item: WeddingItem = {
       id: crypto.randomUUID(),
@@ -115,8 +116,16 @@ const AICommandBar = () => {
       notas: preview.notas || null,
       criadoEm: new Date().toISOString().split("T")[0],
     };
-    addItem(item);
-    toast({ title: "Item adicionado! ✨", description: `"${item.nome}" foi adicionado ao planejamento.` });
+    if (existing) {
+      const { id: _id, criadoEm: _c, ...rest } = item;
+      const ok = await updateItem(existing.id, rest);
+      if (!ok) return;
+      toast({ title: "Item atualizado! ✨", description: `"${existing.nome}" foi atualizado.` });
+    } else {
+      const ok = await addItem(item);
+      if (!ok) return;
+      toast({ title: "Item adicionado! ✨", description: `"${item.nome}" foi adicionado ao planejamento.` });
+    }
     setPreview(null);
     setInput("");
     setOpen(false);
