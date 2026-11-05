@@ -29,10 +29,12 @@ const AISuggestions = () => {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const { toast } = useToast();
 
+  const { configId } = useWedding();
+  const cacheKey = `${CACHE_KEY}:${configId}:${items.map(i => i.nome).sort().join("|")}`;
   const fetchSuggestions = useCallback(async (force = false) => {
     if (!force) {
       try {
-        const raw = localStorage.getItem(CACHE_KEY);
+        const raw = localStorage.getItem(cacheKey);
         if (raw) {
           const { ts, data } = JSON.parse(raw);
           if (Date.now() - ts < TTL_MS) {
@@ -51,22 +53,19 @@ const AISuggestions = () => {
       if (data?.error) throw new Error(data.error);
       const sug: Suggestion[] = data?.sugestoes || [];
       setSuggestions(sug);
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: sug }));
+      localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: sug }));
     } catch (e: any) {
       toast({ title: "Erro nas sugestões", description: e.message, variant: "destructive" });
     }
     setLoading(false);
-  }, [items, toast]);
+  }, [items, toast, cacheKey]);
 
-  useEffect(() => { fetchSuggestions(); }, []); // eslint-disable-line
+  useEffect(() => { if (configId) fetchSuggestions(); }, [configId, cacheKey]); // eslint-disable-line
 
   const addToPlan = (s: Suggestion) => {
     window.dispatchEvent(new CustomEvent("ai-commandbar-open", {
       detail: { text: `Quero adicionar ${s.nome} ao planejamento, valor estimado R$${s.valorEstimado}` }
     }));
-    // track usage
-    const c = Number(localStorage.getItem("aiUsageCount") || "0") + 1;
-    localStorage.setItem("aiUsageCount", String(c));
   };
 
   return (
@@ -93,8 +92,7 @@ const AISuggestions = () => {
         </div>
       ) : suggestions.length === 0 ? (
         <div className="glass-card p-8 text-center text-sm text-muted-foreground font-body">
-          <Loader2 className="animate-spin mx-auto mb-2" size={20} />
-          Carregando sugestões...
+          Nenhuma sugestão no momento. Toque em "Atualizar" para tentar de novo.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

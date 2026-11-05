@@ -15,7 +15,7 @@ interface Badge {
 
 const BADGES: Badge[] = [
   { id: "first", emoji: "🌹", name: "Primeiros Passos", description: "Primeiro item adicionado", check: (items) => items.length > 0 },
-  { id: "saver", emoji: "💰", name: "Poupador", description: "Pagou alguma parcela em dia", check: (items) => items.some((i: any) => i.parcelas.some((p: any) => p.pago)) },
+  { id: "saver", emoji: "💰", name: "Poupador", description: "Pagou a primeira parcela", check: (items) => items.some((i: any) => i.parcelas.some((p: any) => p.pago)) },
   { id: "organized", emoji: "📋", name: "Organizado", description: "10+ itens cadastrados", check: (items) => items.length >= 10 },
   { id: "halfway", emoji: "✅", name: "Meio Caminho", description: "50% dos itens concluídos", check: (items) => items.length > 0 && items.filter((i: any) => i.status === "concluido").length >= items.length * 0.5 },
   { id: "almost", emoji: "🎊", name: "Quase Lá", description: "80% dos itens concluídos", check: (items) => items.length > 0 && items.filter((i: any) => i.status === "concluido").length >= items.length * 0.8 },

@@ -23,7 +23,7 @@ const AICommandBar = () => {
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<Partial<WeddingItem> | null>(null);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
-  const { addItem, config } = useWedding();
+  const { addItem, updateItem, items, config } = useWedding();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -226,7 +226,7 @@ const AICommandBar = () => {
                       onClick={handleConfirm}
                       className="flex-1 gradient-rose text-primary-foreground font-body font-medium py-3 rounded-lg flex items-center justify-center gap-2"
                     >
-                      <Check size={18} /> Confirmar
+                      <Check size={18} /> {existing ? `Atualizar "${existing.nome}"` : "Confirmar"}
                     </button>
                     <button
                       onClick={() => setPreview(null)}
