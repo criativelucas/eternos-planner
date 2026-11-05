@@ -48,25 +48,38 @@ export const upcomingParcelas = (items: WeddingItem[], days = 7) => {
   });
 };
 
-export const monthlyExpense = (items: WeddingItem[], weddingDate?: string) => {
-  const today = startOfDay(new Date());
+/** Calendar-day comparison: a date-only deadline is overdue only after its day ends. */
+export const isOverdueDate = (dateStr: string | null | undefined, now = new Date()) =>
+  !!dateStr && parseISO(dateStr) < startOfDay(now);
+
+/**
+ * Unpaid installments grouped by calendar month, from the current month through the
+ * wedding month. Months without installments are included with value 0.
+ */
+export const monthlyExpense = (items: WeddingItem[], weddingDate?: string, now = new Date()) => {
+  const today = startOfDay(now);
   const cap = weddingDate ? parseISO(weddingDate) : null;
   const map: Record<string, number> = {};
+  let lastKey = format(today, "yyyy-MM");
   pendingParcelas(items).forEach(p => {
     if (!p.dataVencimento) return;
     const d = parseISO(p.dataVencimento);
     if (d < today) return;
     if (cap && d > cap) return;
-    const key = p.dataVencimento.substring(0, 7); // YYYY-MM
+    const key = p.dataVencimento.substring(0, 7);
     map[key] = (map[key] || 0) + p.valor;
+    if (key > lastKey) lastKey = key;
   });
-  return Object.entries(map)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, value]) => ({
-      month,
-      monthLabel: format(parseISO(month + "-01"), "MMM/yy", { locale: ptBR }),
-      value,
-    }));
+  if (Object.keys(map).length === 0) return [];
+  if (cap && format(cap, "yyyy-MM") > lastKey) lastKey = format(cap, "yyyy-MM");
+  const out: { month: string; monthLabel: string; value: number }[] = [];
+  const cur = new Date(today.getFullYear(), today.getMonth(), 1);
+  while (format(cur, "yyyy-MM") <= lastKey) {
+    const key = format(cur, "yyyy-MM");
+    out.push({ month: key, monthLabel: format(cur, "MMM/yy", { locale: ptBR }), value: map[key] || 0 });
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  return out;
 };
 
 export const parcelaColor = (p: Parcela): string => {

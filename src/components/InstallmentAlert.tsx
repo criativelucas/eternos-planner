@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AlertTriangle, Bell, X } from "lucide-react";
 import { useWedding } from "@/contexts/WeddingContext";
-import { overdueParcelas, upcomingParcelas, allParcelas, fmtBRL } from "@/lib/finance";
+import { overdueParcelas, upcomingParcelas, fmtBRL } from "@/lib/finance";
 import { daysUntil } from "@/lib/date";
 
 const InstallmentAlert = () => {
@@ -10,13 +10,8 @@ const InstallmentAlert = () => {
 
   const overdue = overdueParcelas(items);
   const upcoming = upcomingParcelas(items, 7);
-  const total = allParcelas(items).length;
-
-  const suspicious = total > 0 && overdue.length / total > 0.5;
-  const recentOverdue = overdue.filter(p => {
-    const d = daysUntil(p.dataVencimento);
-    return d >= -90 && d < 0;
-  });
+  const recentOverdue = overdue;
+  const suspicious = false;
 
   if (dismissed) return null;
   if (!suspicious && recentOverdue.length === 0 && upcoming.length === 0) return null;
