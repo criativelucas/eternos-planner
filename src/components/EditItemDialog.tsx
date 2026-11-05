@@ -45,29 +45,15 @@ const EditItemDialog = ({ item, open, onOpenChange }: Props) => {
     }
   }, [item]);
 
-  const status = useAutosave(form, (f) => {
-    if (!item || !open) return;
+  const loadedFromItem = !!item && form.nome === item.nome && form.categoria === item.categoria &&
+    form.fornecedor === (item.fornecedor || "") && form.valorTotal === item.valorTotal &&
+    form.valorPago === item.valorPago && form.prazo === (item.prazo || "") && form.status === item.status &&
+    form.prioridade === item.prioridade && form.notas === (item.notas || "");
 
-    // Sync parcelas with valorPago chronologically (mark paid up to valorPago)
-    let parcelas = item.parcelas || [];
-    if (parcelas.length > 0) {
-      const sorted = [...parcelas].sort((a, b) =>
-        (a.dataVencimento || "").localeCompare(b.dataVencimento || "")
-      );
-      let remaining = f.valorPago;
-      const paidMap = new Map<number, boolean>();
-      for (const p of sorted) {
-        if (remaining + 0.5 >= p.valor) {
-          paidMap.set(p.numero, true);
-          remaining -= p.valor;
-        } else {
-          paidMap.set(p.numero, false);
-        }
-      }
-      parcelas = parcelas.map(p => ({ ...p, pago: paidMap.get(p.numero) ?? p.pago }));
-    }
-
-    updateItem(item.id, {
+  // Only saves real edits; installment paid flags are never rewritten here.
+  const status = useAutosave(form, async (f) => {
+    if (!item) return true;
+    return updateItem(item.id, {
       nome: f.nome,
       categoria: f.categoria,
       fornecedor: f.fornecedor || null,
@@ -77,9 +63,8 @@ const EditItemDialog = ({ item, open, onOpenChange }: Props) => {
       status: f.status,
       prioridade: f.prioridade,
       notas: f.notas || null,
-      parcelas,
     });
-  }, 700);
+  }, 700, !!item && !loadedFromItem);
 
 
   const selectClass = "w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm font-body text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
@@ -92,7 +77,8 @@ const EditItemDialog = ({ item, open, onOpenChange }: Props) => {
             <DialogTitle className="font-heading text-xl">Editar Item</DialogTitle>
             <div className="text-xs font-body text-muted-foreground flex items-center gap-1.5 min-h-[20px]">
               {status === "saving" && (<><Loader2 size={12} className="animate-spin" /> Salvando…</>)}
-              {status === "saved" && (<><Check size={12} className="text-emerald-500" /> Salvo</>)}
+              {status === "saved" && (<><Check size={12} className="text-primary" /> Salvo</>)}
+              {status === "error" && (<span className="text-destructive">Não foi salvo</span>)}
             </div>
           </div>
         </DialogHeader>

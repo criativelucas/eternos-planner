@@ -1,31 +1,41 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWedding } from "@/contexts/WeddingContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { toCSV } from "@/lib/csv";
 import { Save, Download, UserPlus, LogOut, Mail, Check, X } from "lucide-react";
 
 const ConfigPage = () => {
-  const { config, updateConfig, items, configId } = useWedding();
+  const { config, updateConfig, items, configId, loading } = useWedding();
   const { user, signOut } = useAuth();
   const { toast } = useToast();
   const [form, setForm] = useState(config);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [invites, setInvites] = useState<{ id: string; invite_email: string; accepted: boolean }[]>([]);
-  const [loadedInvites, setLoadedInvites] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // Load invites on first render
-  if (!loadedInvites && configId) {
+  // Keep the form in sync with the real saved settings once they load.
+  useEffect(() => { if (!loading) setForm(config); }, [loading, config]);
+
+  useEffect(() => {
+    if (!configId) return;
     supabase.from("couple_invites").select("id, invite_email, accepted").eq("config_id", configId).then(({ data }) => {
-      if (data) setInvites(data);
-      setLoadedInvites(true);
+      if (data) {
+        // one row per email
+        const seen = new Set<string>();
+        setInvites(data.filter(d => { const k = d.invite_email.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }));
+      }
     });
-  }
+  }, [configId]);
 
-  const handleSave = () => {
-    updateConfig(form);
-    toast({ title: "Configurações salvas! ✨" });
+  const handleSave = async () => {
+    if (loading || !configId) return;
+    setSaving(true);
+    const ok = await updateConfig(form);
+    setSaving(false);
+    if (ok) toast({ title: "Configurações salvas! ✨" });
   };
 
   const handleInvite = async () => {
@@ -37,11 +47,13 @@ const ConfigPage = () => {
         body: { partnerEmail: inviteEmail, configId },
       });
 
-      if (error) {
+      if (error || data?.error) {
+        toast({ title: "Erro ao convidar", description: data?.error || error?.message, variant: "destructive" });
+      } else if (false) {
         toast({ title: "Erro ao convidar", description: error.message, variant: "destructive" });
       } else {
         toast({ title: "Convite enviado! 💍", description: `Um email foi enviado para ${inviteEmail} com o link de acesso.` });
-        setInvites(prev => [...prev, { id: crypto.randomUUID(), invite_email: inviteEmail, accepted: false }]);
+        setInvites(prev => prev.some(p => p.invite_email.toLowerCase() === inviteEmail.toLowerCase()) ? prev : [...prev, { id: crypto.randomUUID(), invite_email: inviteEmail, accepted: false }]);
         setInviteEmail("");
       }
     } catch (err) {
@@ -51,12 +63,10 @@ const ConfigPage = () => {
   };
 
   const handleExport = () => {
-    const csv = [
-      ["Nome", "Categoria", "Fornecedor", "Valor Total", "Valor Pago", "Status", "Prazo", "Prioridade"].join(","),
-      ...items.map(i =>
-        [i.nome, i.categoria, i.fornecedor || "", i.valorTotal, i.valorPago, i.status, i.prazo || "", i.prioridade].join(",")
-      ),
-    ].join("\n");
+    const csv = toCSV([
+      ["Nome", "Categoria", "Fornecedor", "Valor Total", "Valor Pago", "Status", "Prazo", "Prioridade"],
+      ...items.map(i => [i.nome, i.categoria, i.fornecedor || "", i.valorTotal, i.valorPago, i.status, i.prazo || "", i.prioridade]),
+    ]);
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
